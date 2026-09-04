@@ -197,3 +197,25 @@ Recommended actions:
 SpecMesh 的唯一成功指标是：
 
 > 换一个 Agent，开一个新终端，甚至隔几个月回来，不需要重新讲一遍项目。
+
+## 12. 实验性 Map v0 边界
+
+本节记录仓库中的实验方向，不是 SpecMesh v1.0 的必需结构。项目没有真实检索缺口时，不应机械增加 `.specmesh/` 或派生索引。
+
+Map v0 验证一套极小的共享地址协议：
+
+```text
+code://src/auth.py#Session.validate
+mem://decision/auth-boundary
+spec://acceptance/R-001
+```
+
+一张上下文图可以同时检索两类事实，但不能混淆权威：
+
+- 文件、符号、import、reference 和测试关系来自代码与 Git，标记为 `derived`；缓存过期时重新生成。
+- 意图、约束、决策和显式关系来自已审查的 Markdown，标记为 `asserted`；修改需要正常 Review。
+- 派生索引不进入 Git，不反向覆盖人工记忆。
+- 全局 Map 用于定向，任务 focus 用于执行；两者使用同一底图和硬预算。
+- v0 使用文件名、符号名、显式关系和 personalized PageRank。没有实测缺口前不增加向量数据库、MCP 服务、后台进程或每目录 Map。
+
+参考实现和实验入口位于 `scripts/map_v0.py` 与 `.specmesh/context.md`。只有跨多个真实任务重复证明有效后，相关机制才可成为后续规范版本的候选。

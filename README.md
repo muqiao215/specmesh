@@ -34,6 +34,25 @@ repo/
 
 SpecMesh 不是 Skill、Harness、Agent 编排系统或 Spec-Driven Development 框架。代码负责解释实现；SpecMesh 只保存代码不能快速恢复、但会影响未来判断的信息。
 
+## Map v0 实验
+
+仓库包含一个非规范性的 Map v0 spike，用来验证“共享地址与检索、分离事实权威”：
+
+- 代码结构由仓库自动派生，缓存可删除、可重建。
+- 项目语义来自已审查的 Markdown，关系明确标记为 `asserted`。
+- `code://`、`mem://`、`spec://` 共用一张检索图，但保留各自权威。
+- 全局视图和任务 focus 使用同一底图，并受确定性 Token 预算约束。
+
+```bash
+python3 scripts/map_v0.py build
+python3 scripts/map_v0.py check
+python3 scripts/map_v0.py global
+python3 scripts/map_v0.py focus "task description"
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+入口见 [`.specmesh/context.md`](.specmesh/context.md)。生成的 `.specmesh/cache/` 不进入 Git，也不属于项目事实源。
+
 ## License
 
 [MIT](LICENSE)
