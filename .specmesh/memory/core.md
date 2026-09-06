@@ -10,11 +10,11 @@ SpecMesh Map v0 shares addresses and retrieval across code structure and project
 
 ## Relations
 
-- relation: defines | from: `mem://core` | to: `spec://map-v0` | provenance: asserted
-- relation: configured_by | from: `spec://map-v0` | to: `code://.specmesh/context.md` | provenance: asserted
-- relation: implemented_by | from: `spec://map-v0` | to: `code://scripts/map_v0.py` | provenance: asserted
-- relation: verified_by | from: `spec://map-v0` | to: `code://tests/test_map_v0.py` | provenance: asserted
-- relation: documented_by | from: `spec://map-v0` | to: `code://SPEC.md` | provenance: asserted
+- relation: defines | from: `mem://core` | to: `spec://map-v0` | provenance: asserted | scope: area:memory-authority
+- relation: configured_by | from: `spec://map-v0` | to: `code://.specmesh/context.md` | provenance: asserted | scope: area:map-derivation
+- relation: implemented_by | from: `spec://map-v0` | to: `code://scripts/map_v0.py` | provenance: asserted | scope: area:map-derivation
+- relation: verified_by | from: `spec://map-v0` | to: `code://tests/test_map_v0.py` | provenance: asserted | scope: area:map-derivation
+- relation: documented_by | from: `spec://map-v0` | to: `code://SPEC.md` | provenance: asserted | scope: area:map-derivation
 
 ## Revisit when
 

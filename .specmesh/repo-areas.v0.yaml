@@ -1,0 +1,17 @@
+areas:
+  - id: area:map-derivation
+    purpose: Derive the repo map from sources with deterministic ranking and hard budgets.
+    anchors:
+      - code://scripts/map_v0.py
+      - code://scripts/map_v0.py#build_graph
+      - code://tests/test_map_v0.py
+    read_next:
+      - .specmesh/context.md
+      - SPEC.md
+  - id: area:memory-authority
+    purpose: Assert reviewed memory relations binding spec identity to code anchors.
+    anchors:
+      - code://.specmesh/memory/core.md
+      - code://.specmesh/context.md
+    read_next:
+      - SPEC.md
