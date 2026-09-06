@@ -55,9 +55,9 @@ Map v0 已经落地，Area Overlay 是最小且自然的下一步；其余证据
 
 `resolve_areas` 聚合优先级定为 `ambiguous > candidate_rebind > unresolved`：任一 anchor 有 ≥2 候选即 ambiguous（注入错误 anchor 的代价最高）；否则任一 anchor 存在唯一候选即 candidate_rebind（行动建议必须浮出，per-anchor reason 仍报告 no-candidate 的 anchor）；全部无候选才 unresolved。注入安全性不受影响——只有 `current` 注入。
 
-## Gating rule — 2026-09-06 实现
+## Gating rule — 2026-09-06 实现（2026-09-07 评审后修订）
 
-`spec://`、`mem://` 节点仅当其全部关系带 scope 且 scope ∩ injectable(current 且非 superseded) = ∅ 时被 gate；任一 unscoped 关系的端点永不 gate（向后兼容：无 scope 的 memory 行为不变）。scoped edge 仅在 scope ∈ injectable 时渲染。构建期校验 dangling scope（normalize 后必须命中已声明 area），失败即 RuntimeError。
+节点仅当其全部关系带 scope、scope ∩ injectable(current 且非 superseded) = ∅、且不属于真实文件集合（sources 路径）时被 gate；任一 unscoped 关系的端点永不 gate（向后兼容：无 scope 的 memory 行为不变）。判据从早期的 `mem://`/`spec://` 前缀改为"scoped-only 且非真实文件"：mem/spec 自动覆盖，stale `code://` 旧路径同样被 gate，真实文件（如 SPEC.md）只丢 scoped 边、节点保留；带 `#` 的符号节点不属于真实文件集合，随 scope gate。scoped edge 仅在 scope ∈ injectable 时渲染。构建期 scope 校验 fail-loud：非规范形式（不再静默 normalize，报错附 normalize_area_id 建议）、悬空 scope 均为带 `文件: 行号` 的 RuntimeError；`- relation:` 行解析失败（含 `provenance: derived`）同样报错。
 
 ## Ranking & budget findings — 2026-09-06 实现
 
@@ -68,7 +68,7 @@ Map v0 已经落地，Area Overlay 是最小且自然的下一步；其余证据
 
 ## Scratch-copy validation — 2026-09-06
 
-`map_v0.py → repo_map.py` 重命名：area:map-derivation → `candidate_rebind`，唯一候选 `code://scripts/repo_map.py#build_graph`；`spec://map-v0` 从 focus 消失。人工仅改 YAML anchors → `current`，`spec://map-v0` 恢复注入。Memory 文件全程未被工具改写。已知边界：stale memory 关系目标（旧路径）在确认后仍以派生节点出现，属人工维护范围（memory_write_policy: reviewed）。
+`map_v0.py → repo_map.py` 重命名：area:map-derivation → `candidate_rebind`，唯一候选 `code://scripts/repo_map.py#build_graph`；`spec://map-v0` 从 focus 消失。人工仅改 YAML anchors → `current`，`spec://map-v0` 恢复注入。Memory 文件全程未被工具改写。已知边界（2026-09-07 评审后已修正标注）：stale memory 关系目标（旧路径）在确认后以 `[code; asserted]` 节点呈现——诚实标注"仅 memory 断言、代码未派生"，等待人工更新 core.md 目标路径；gating 管注入时机，memory 内容本身仍属人工维护（memory_write_policy: reviewed）。
 
 ## Desktop entry
 

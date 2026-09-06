@@ -37,7 +37,7 @@ Map v0 已验证派生代码图、人工语义记忆、内容哈希和预算化 
 - [x] 验证无关重命名、职责移动、歧义与显式替代（一对多拆分为显式非目标，见 Non-goals）
 - [x] 将 Area 结果接入受预算约束的 focus 视图
 - [x] 用真实任务验证跨路径变化的定位与 Memory 连续性（真实仓库 + /tmp/opencode 拷贝实验）
-- [ ] 更新实验文档，保留 adopt / adapt / reject 结论
+- [x] 更新实验文档，保留 adopt / adapt / reject 结论（README「Area Overlay v0 结论」节）
 
 ## Success
 
@@ -47,7 +47,7 @@ Map v0 已验证派生代码图、人工语义记忆、内容哈希和预算化 
 
 ## Status
 
-实现与验证完成；用户评审（5 项：2 P1 + 3 P2）全部修复并复验：35/35 测试通过。P1-1 stale code 目标不再标注 derived（asserted），PageRank/渲染只用活跃 scope 子图，candidate_rebind 期间旧路径 0 幻影节点行（仅保留人工 rebind 提示行）；P1-2 memory 解析 fail-loud（malformed 行、非规范 scope 给规范化建议、悬空 scope 均带 文件:行号 报错，不再静默归一化/丢弃）；P2：defines 关系改挂 area:memory-authority；拆分显式列为非目标（split_into 字段被拒，有测试）；parse_areas 拒绝重复字段。真实仓库 global 1199/1200、focus 788/800、缓存重建逐字节一致；scratch 拷贝验证 candidate_rebind → 人工确认 → current + Memory 回归完整闭环。剩余：实验文档 adopt/adapt/reject 结论（随后单独完成）。
+实现与验证完成；用户评审（5 项：2 P1 + 3 P2）全部修复并复验：35/35 测试通过。P1-1 stale code 目标不再标注 derived（asserted），PageRank/渲染只用活跃 scope 子图，candidate_rebind 期间旧路径 0 幻影节点行（仅保留人工 rebind 提示行）；P1-2 memory 解析 fail-loud（malformed 行、非规范 scope 给规范化建议、悬空 scope 均带 文件:行号 报错，不再静默归一化/丢弃）；P2：defines 关系改挂 area:memory-authority；拆分显式列为非目标（split_into 字段被拒，有测试）；parse_areas 拒绝重复字段。真实仓库 global 1199/1200、focus ≤800、缓存重建逐字节一致；scratch 拷贝验证 candidate_rebind → 人工确认 → current + Memory 回归完整闭环。用户复审（2026-09-07）：代码 Review 通过，5 项发现全部关闭、无新缺陷。实验闭环完成：adopt/adapt/reject 结论已入 README，交接文档已同步最终语义（35/35、asserted 标注、fail-loud scope 校验）。
 
 ## Next Step
 

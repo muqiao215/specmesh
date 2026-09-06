@@ -2,7 +2,7 @@
 
 ## Current
 
-Area Overlay v0 实现与验证完成：30/30 测试通过，真实仓库集成完毕，跨重命名 Memory 连续性经拷贝实验验证。剩余实验文档结论（adopt/adapt/reject）。
+Area Overlay v0 全部完成：35/35 测试通过；用户代码 Review 通过（5 项评审发现全部修复并复验）；实现、仓库接入与规划文档已提交并推送（`56fe4fd`/`0ea0d5a`/`1222e5a`）；adopt/adapt/reject 结论已写入 README。缓存重建后 `check` fresh，两区 current。
 
 ## Done
 
@@ -25,16 +25,15 @@ Area Overlay v0 实现与验证完成：30/30 测试通过，真实仓库集成�
 
 ## Remaining
 
-- 实验文档 adopt/adapt/reject 结论。
-- core.md 的 scope 标注提交用户复核。
+（无 — v0 收口完成；后续候选见 findings.md 的每周候选分类）
 
 ## Issues
 
-- 确认后的视图中，stale memory 关系目标（如 implemented_by → 旧路径）会以派生节点出现；gating 管注入时机，memory 内容本身仍属人工维护（memory_write_policy: reviewed）。属设计边界，非缺陷。
+- 确认后的视图中，stale memory 关系目标（如 implemented_by → 旧路径）以 `[code; asserted]` 节点呈现（2026-09-07 评审修复：不再伪装派生节点，排名亦不涉及）；memory 内容本身仍属人工维护（memory_write_policy: reviewed）。属设计边界，非缺陷。
 
 ## Next
 
-撰写实验文档结论；等待用户对 core.md scope 标注的复核。
+无。实验闭环：README adopt/adapt/reject 结论 + 最终 build → check → areas → global/focus 验证完成后收口。
 
 ## 2026-09-06 评审修复轮
 
@@ -42,3 +41,10 @@ Area Overlay v0 实现与验证完成：30/30 测试通过，真实仓库集成�
 - 真实仓库：build/check/areas（两区 current）、global 1199/1200、focus 788，重建逐字节一致（sha 7ee49764…）。
 - scratch 验证：git mv map_v0.py→repo_map.py → candidate_rebind（旧路径 0 幻影节点行）；YML 人工确认 → current + spec://map-v0 / mem://core 回归。
 - core.md defines 改挂 area:memory-authority；context.md 增补权威规则文档；task_plan 移除拆分声明并加非目标。
+
+## 2026-09-07 复审收口轮
+
+- 用户复审：5 项代码问题全部关闭，无新实现缺陷，代码 Review 通过。
+- 修正交接文档失效结论：Current 30/30 → 35/35；Issues 与 findings.md 中 stale 目标"派生节点"描述改为 `[code; asserted]`；Gating rule 段同步评审后语义（scoped-only 非真实文件判据、fail-loud scope 校验）。
+- README Map v0 实验段新增 Area Overlay v0 adopt/adapt/reject 结论 + `areas` 命令。
+- task_plan 最后一项勾选；最终验证 build → check → areas → global/focus。
