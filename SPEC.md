@@ -1,11 +1,11 @@
 ---
 name: SpecMesh
-version: 1.0.0
+version: 1.1.0
 type: project-continuity-standard
 canonical: true
 ---
 
-# SpecMesh v1.0
+# SpecMesh v1.1
 
 ## 1. 目标
 
@@ -147,6 +147,15 @@ Human Review
 ```
 
 模型如何使用 Subagent、测试、Review 或 Harness Loop 不属于 SpecMesh。工具解决执行，项目文档解决记忆，人解决方向。
+
+### 变更收口纪律
+
+开放变更是项目记忆的一部分：每个开放 PR 都在声称“这件事正在以这条路径进行”。保持该记忆真实需要两条纪律：
+
+1. **单一轨道**：修复要么始终通过 PR 合并，要么直推 main 后立即关闭对应 PR。禁止“直推吸收 + PR 悬挂”的双轨——它会同时制造已完成与未完成的混合信号。
+2. **定期收口**：main 持续演进时，开放 PR 会不可逆腐化（冲突、语义过时、基线漂移）。每个发布周期至少盘点一次开放变更，逐项判定“已被吸收 / rebase / 重写 / 放弃”，并把判定依据留在 PR 上。
+
+判定必须基于证据（`git cherry` 补丁等价性、代码落点、测试覆盖位置），不基于标题相似度。
 
 ## 9. 标准动作
 
