@@ -33,9 +33,7 @@ class MapV0Tests(unittest.TestCase):
             "- relation: implemented_by | from: `spec://demo` | "
             "to: `code://src/app.py` | provenance: asserted\n"
             "- relation: verified_by | from: `spec://demo` | "
-            "to: `code://tests/test_app.py` | provenance: asserted\n"
-            "- relation: must_not_import | from: `spec://demo` | "
-            "to: `code://src/helper.py` | provenance: derived\n",
+            "to: `code://tests/test_app.py` | provenance: asserted\n",
         )
         self._write("src/app.py", "import src.helper\n\ndef normalize(value):\n    return helper(value)\n")
         self._write(
@@ -86,7 +84,15 @@ class MapV0Tests(unittest.TestCase):
         derived = [edge for edge in graph["edges"] if edge["provenance"] == "derived"]
         self.assertTrue(asserted)
         self.assertTrue(derived)
-        self.assertNotIn("must_not_import", {edge["relation"] for edge in graph["edges"]})
+        self._write(
+            ".specmesh/memory/core.md",
+            "# Core\n\n"
+            "- relation: must_not_import | from: `spec://demo` | "
+            "to: `code://src/helper.py` | provenance: derived\n",
+        )
+        with self.assertRaises(RuntimeError) as raised:
+            map_v0.build_graph(self.root)
+        self.assertIn("malformed relation", str(raised.exception))
         self.assertEqual(next(node for node in graph["nodes"] if node["id"] == "spec://demo")["authority"], "asserted")
 
     def test_repeated_generation_is_byte_identical(self):
