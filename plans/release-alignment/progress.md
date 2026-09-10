@@ -1,17 +1,19 @@
 # Progress
 
 ## Current
-Release preparation; publication and local alignment pending.
+Release alignment verified (2026-09-11).
+
 ## Done
-Reviewed canonical SpecMesh v1.1, local entries, remote state and parallel changes. Updated ownership
-boundaries and corrected stale completion claims.
+PR #1 merged at 974fe19; first GitHub release v1.1.0 published. Local main fast-forwarded; map rebuilt and check fresh. Installed user standard matches released SPEC.md byte-for-byte. Map and Area remain experimental.
+
 ## Remaining
-Publication and local alignment.
+None for release/runtime alignment. Follow PROJECT.md for separate product priorities.
+
 ## Issues
-See project-specific acceptance constraints in PROJECT.md.
+No new runtime or standard behavior introduced by this documentation cleanup.
+
 ## Next
-Run release checks, review staged content and publish.
+Continue the next project priority via plans/README.md; recheck installed versions before future deployment.
 
 ## Verification
-
-35 tests pass; build/check fresh; both areas current; global 1184/1200 and focus 800/800 v0 tokens. SPEC.md unchanged and identical to installed standard.
+35 tests passed; global/focus stayed within 1200/800 v0-token budgets; both areas current.
