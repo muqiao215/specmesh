@@ -51,7 +51,7 @@ Map v0 已验证派生代码图、人工语义记忆、内容哈希和预算化 
 
 ## Next Step
 
-撰写实验文档结论（adopt / adapt / reject），并把 core.md 的人工 scope 标注提交用户复核。
+实验实现及评审已收口；后续只根据真实任务证据决定是否推进新版本，见 PROJECT.md。
 
 ## Errors Encountered
 
