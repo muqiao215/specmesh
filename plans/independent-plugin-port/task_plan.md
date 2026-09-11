@@ -2,11 +2,11 @@
 
 ## Status / owner
 
-Status: planned hardening beyond the optional draft machine port. Owner: SpecMesh maintainers. CM calls this interface; SpecMesh stays independently usable. Normative Markdown rules remain separate from optional executable tooling.
+Status: consistent snapshot implemented and locally paired with the TypeScript CM candidate; publication and real Agent consumption acceptance follow. Owner: SpecMesh maintainers. CM calls this interface; SpecMesh stays independently usable. Normative Markdown rules remain separate from optional executable tooling.
 
 ## Observed implementation
 
-`specmesh_port/service.py` checks root/HEAD/path containment and selected continuity documents. CLI is bounded JSON request/response; propose_update is a Python method returning a diff. `verify_closeout` stays unknown without external verification. CM has an explicit command adapter, not automatic lifecycle hooks. Tracked Markdown is an asserted candidate, not reviewed authority.
+`specmesh_port/service.py` checks root/HEAD/path containment and selected continuity documents through revalidated descriptor snapshots. CLI is bounded JSON request/response with declared capabilities; propose_update is a Python method returning a diff. `verify_closeout` stays unknown without external verification. CM's TS candidate now has an optional task-start gate and handoff/verify operations; production cutover is not implied. Tracked Markdown is an asserted candidate, not reviewed authority.
 
 ## Requirements
 
@@ -21,8 +21,8 @@ Status: planned hardening beyond the optional draft machine port. Owner: SpecMes
 | ID | Work | Acceptance | State |
 |---|---|---|---|
 | SM-P0 | Draft contract review and standalone distribution | No CM dependency; CLI in clean optional runtime; schema fixtures and bounded input/output | planned |
-| SM-P1 | Consistent inspection snapshot including dirty content | Concurrent HEAD/uncommitted edit/symlink replacement tests; stale references detected | planned |
-| SM-P2 | CM hook semantics: task start, handoff, verify, closeout | Hook request carries scope/version/evidence; timeout/unknown fail required gate; no implicit TaskHub writes | planned |
+| SM-P1 | Consistent inspection snapshot including dirty content | Concurrent HEAD/uncommitted edit/symlink replacement tests; stale references detected | local standalone and paired CM checks passed; publishing |
+| SM-P2 | CM hook semantics: task start, handoff, verify, closeout | Hook request carries scope/version/evidence; timeout/unknown fail required gate; no implicit TaskHub writes | task-start/handoff/unknown-closeout candidate passes paired tests; external acceptance ownership remains open |
 | SM-P3 | Reviewed authority and acceptance evidence provenance | Self-reported passed manifest never certifies external result; reviewer and evidence identity explicit | planned |
 | SM-P4 | Repeatable real Agent takeover across controlled repos | Agent finds current intent/decisions/plan and produces accepted task result without replaying all history | planned |
 
@@ -38,4 +38,6 @@ Keep SPEC.md backward compatible unless a separately reviewed normative release 
 
 CM lifecycle ownership: https://github.com/muqiao215/ControlMesh/blob/main/plans/runtime-convergence/task_plan.md
 Viewer context evidence: https://github.com/muqiao215/Codex-Claude-History-Viewer/blob/main/plans/agent-handoff-service/task_plan.md
-Next: review draft request/result fixtures and the existing CM command's failure behavior before proposing automatic hooks.
+Next: validate the declared snapshot capability against the TypeScript CM adapter and wire
+task-start/handoff checks. Required unknown closeout remains blocked until external
+acceptance is owned and verified; structural checks cannot supply that evidence.
