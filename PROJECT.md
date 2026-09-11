@@ -24,7 +24,7 @@ reviewed Markdown claims are asserted. Only current areas inject scoped memory. 
 ## Current State
 SPEC.md is v1.1.0 and matches the installed user standard at the start of release alignment.
 Map v0 and Area Overlay implementation/review are complete (35 regression tests); both remain
-experimental and do not expand the mandatory standard. The first GitHub Release v1.1.0 now records this baseline.
+experimental and do not expand the mandatory standard. The first GitHub Release v1.1.0 records that baseline. Distribution v1.2.0 is now published with the optional draft machine port; 39 tests pass, the Map is fresh, and SPEC.md matches the installed user standard.
 
 ## Current Priority
 Repository self-adoption and v1.1.0 publication are complete. Further Map evolution waits for
