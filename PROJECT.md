@@ -28,7 +28,7 @@ experimental and do not expand the mandatory standard. The first GitHub Release 
 
 ## Current Priority
 Repository self-adoption and v1.1.0 publication are complete. Further Map evolution waits for
-repeated real-task gaps; no new runtime or indexing service is planned.
+repeated real-task gaps. The optional independent machine port is included as a draft tool in distribution v1.2.0; it does not change the mandatory standard or add orchestration. See [machine port](docs/CODEKIT-INTEGRATION.md).
 
 ## Knowledge Map
 - Normative rules → [SPEC.md](SPEC.md)
@@ -40,3 +40,7 @@ repeated real-task gaps; no new runtime or indexing service is planned.
 - Experimental configuration → [.specmesh/context.md](.specmesh/context.md)
 
 - Plan status index → [plans/README.md](plans/README.md)
+
+## Approved next direction
+
+The primary coordinating Agent owns cross-project delivery. Repository-owned execution details and current status: [independent-plugin-port](plans/independent-plugin-port/task_plan.md). These future milestones remain planned; current released behavior retains its existing authority.

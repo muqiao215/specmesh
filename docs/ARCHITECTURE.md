@@ -19,3 +19,7 @@ only where a controlled project's actual needs justify them.
 - [Experimental configuration and commands](../.specmesh/context.md)
 - [Decisions](DECISIONS.md)
 - [Release plan](../plans/release-alignment/task_plan.md)
+
+## Codekit integration (v1.2.0)
+
+See [CODEKIT-INTEGRATION](CODEKIT-INTEGRATION.md) for the new module boundary, public invocation and limits. This local implementation does not establish deployment acceptance.

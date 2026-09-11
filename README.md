@@ -66,3 +66,9 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 ## License
 
 [MIT](LICENSE)
+
+## Workflow integration (v1.2.0)
+
+See [implementation boundaries and commands](docs/CODEKIT-INTEGRATION.md).
+
+Distribution release: **v1.2.0**. The normative document standard remains **SpecMesh v1.1.0**; the optional machine port uses **specmesh.port.v1-draft**. These versions describe different contracts.

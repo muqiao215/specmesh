@@ -11,3 +11,7 @@ The graph improves bounded retrieval while separating derived code facts from as
 Tests and one repository experiment do not establish a universal required structure. Reject
 mandatory graph services and automatic anchor rebinding; revisit after repeated real-task evidence.
 Detailed adopt/adapt/reject conclusions remain in README.md and the completed Area plan.
+
+## 2026-09-11 — Integrate against existing repository authority
+
+Reuse the existing storage/parsers and keep SpecMesh independently callable. Do not install a second TaskHub from a proposal or equate historical handoff with live completion. The human overview and headless retrieval have separate entry points. See [scope and remaining limits](CODEKIT-INTEGRATION.md). Status: implemented for v1.2.0; broader roadmap gates remain planned.
