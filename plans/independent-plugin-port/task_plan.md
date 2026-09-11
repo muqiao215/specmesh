@@ -2,7 +2,7 @@
 
 ## Status / owner
 
-Status: consistent snapshot implemented and locally paired with the TypeScript CM candidate; publication and real Agent consumption acceptance follow. Owner: SpecMesh maintainers. CM calls this interface; SpecMesh stays independently usable. Normative Markdown rules remain separate from optional executable tooling.
+Status: consistent snapshot published as v1.2.1, paired with the TypeScript CM candidate, and accepted for real local OpenCode read/continuation. External closeout and the remaining provider/device matrix stay open. Owner: SpecMesh maintainers. CM calls this interface; SpecMesh stays independently usable. Normative Markdown rules remain separate from optional executable tooling.
 
 ## Observed implementation
 
@@ -21,7 +21,7 @@ Status: consistent snapshot implemented and locally paired with the TypeScript C
 | ID | Work | Acceptance | State |
 |---|---|---|---|
 | SM-P0 | Draft contract review and standalone distribution | No CM dependency; CLI in clean optional runtime; schema fixtures and bounded input/output | planned |
-| SM-P1 | Consistent inspection snapshot including dirty content | Concurrent HEAD/uncommitted edit/symlink replacement tests; stale references detected | local standalone and paired CM checks passed; publishing |
+| SM-P1 | Consistent inspection snapshot including dirty content | Concurrent HEAD/uncommitted edit/symlink replacement tests; stale references detected | complete for declared POSIX snapshot profile; standalone/paired checks and release CI passed |
 | SM-P2 | CM hook semantics: task start, handoff, verify, closeout | Hook request carries scope/version/evidence; timeout/unknown fail required gate; no implicit TaskHub writes | task-start/handoff/unknown-closeout candidate passes paired tests; external acceptance ownership remains open |
 | SM-P3 | Reviewed authority and acceptance evidence provenance | Self-reported passed manifest never certifies external result; reviewer and evidence identity explicit | planned |
 | SM-P4 | Repeatable real Agent takeover across controlled repos | Agent finds current intent/decisions/plan and produces accepted task result without replaying all history | planned |
