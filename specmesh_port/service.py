@@ -113,6 +113,24 @@ class SpecMeshService:
                 finding("acceptance_not_passed_on_head", "error", None, "An acceptance item is failed, unknown or on another HEAD.")
         finding("external_verification_required", "warning", None, "Manifest assertions are not execution evidence; the host must verify content snapshot and results.")
 
+    @staticmethod
+    def _artifact_requirements(snapshot, relative):
+        def literal(path):
+            return (isinstance(path, str) and not Path(path).is_absolute()
+                    and not re.search(r"[\\\x00-\x1f]", path)
+                    and all(part not in ("", ".", "..", ".git") for part in path.split("/")))
+        if not literal(relative):
+            raise ValueError("invalid_requirements_path")
+        raw = snapshot.read(relative)
+        requirements = validate("specmesh-artifact-requirements", json.loads(raw))
+        files = requirements["files"]
+        if not files or len({item["path"] for item in files}) != len(files):
+            raise ValueError("invalid_artifact_requirements")
+        if not all(literal(item["path"]) for item in files):
+            raise ValueError("invalid_artifact_path")
+        return {"path": relative, "sha256": hashlib.sha256(raw).hexdigest(),
+                "authority": "asserted_candidate", "requirements": requirements}
+
     def check(self, request):
         validate("specmesh-request", request)
         result = {"contract_version": "specmesh.port.v1-draft", "observed_head": None,
@@ -132,6 +150,13 @@ class SpecMeshService:
                 if head != request["expected_head"]:
                     finding("head_changed", "error", None, "Current checkout does not match expected_head.")
                 selected, task = self._select(snapshot, request, finding)
+                candidate = None
+                if "requirements_path" in request:
+                    candidate = self._artifact_requirements(snapshot, request["requirements_path"])
+                    if candidate["path"] not in selected:
+                        selected.append(candidate["path"])
+                    if len(selected) > 50:
+                        raise ValueError("progressive_reference_limit")
                 for relative in selected:
                     snapshot.read(relative, optional=True)
                 metadata = self._metadata(root, selected)
@@ -156,6 +181,8 @@ class SpecMeshService:
                 if self._git(root, "rev-parse", "HEAD").decode().strip() != head:
                     finding("head_changed_during_check", "error", None, "Retry on a stable baseline.")
                 result["status"] = "blocked" if any(x["severity"] == "error" for x in result["findings"]) else ("unknown" if request["operation"] == "verify_closeout" else "pass")
+                if candidate is not None and result["status"] == "pass":
+                    result["artifact_requirements"] = candidate
         except (OSError, ValueError, RuntimeError, UnicodeError, subprocess.SubprocessError) as exc:
             reason = str(exc) if isinstance(exc, ValueError) and re.fullmatch(r"[a-z_]+", str(exc)) else type(exc).__name__
             finding("check_unavailable", "error", None, reason)

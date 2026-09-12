@@ -38,6 +38,7 @@ Keep SPEC.md backward compatible unless a separately reviewed normative release 
 
 CM lifecycle ownership: https://github.com/muqiao215/ControlMesh/blob/main/plans/runtime-convergence/task_plan.md
 Viewer context evidence: https://github.com/muqiao215/Codex-Claude-History-Viewer/blob/main/plans/agent-handoff-service/task_plan.md
-Next: validate the declared snapshot capability against the TypeScript CM adapter and wire
-task-start/handoff checks. Required unknown closeout remains blocked until external
+Next: finish explicit artifact-requirement adoption in the CM host. The independent
+source candidate transport passes 57 standalone tests and 9 paired CM tests; it
+does not authorize execution or verify task completion. Required unknown closeout remains blocked until external
 acceptance is owned and verified; structural checks cannot supply that evidence.

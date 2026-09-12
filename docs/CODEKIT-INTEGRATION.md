@@ -24,3 +24,26 @@ Reads are limited to 256 KiB per document, 64 observed paths and 50 returned ref
 A selected task requires task_plan.md, findings.md and progress.md. A tracked document remains asserted_candidate; tracking alone does not make it reviewed authority. Check pass means structural checks passed, not semantic correctness of every project claim. Closeout remains unknown without external verification; a self-reported passed acceptance manifest is insufficient. The service never applies proposals, writes reviewed memory, issues permissions or resumes an Agent.
 
 The draft schemas live inside specmesh_port/contracts and are mirrored by the CM adapter. This is deliberate interface versioning, not shared installation state. The TypeScript CM candidate can register the independent checkout explicitly, check its capability/code identity, gate task preparation, and request handoff/closeout observations. Its trusted runtime profile must already issue reads for selected references; project links cannot expand permissions. These optional hooks do not switch CM's production runtime or establish external acceptance. See each repository's active plan for verified rollout state.
+
+## Optional artifact requirement candidates
+
+A request may explicitly select `requirements_path`, a repository-relative JSON file.
+The standalone format is independent of any runtime:
+
+```json
+{"schema_version":"specmesh.artifact_requirements.v1","files":[{"path":"output/report.md","mode":"write"}]}
+```
+
+Each of the 1–32 unique entries declares `read` or `write` and may include an exact
+lowercase SHA-256. Paths are literal, relative, and exclude traversal and `.git`.
+The manifest is subject to the same bounded descriptor snapshot as project documents.
+A passing result includes `artifact_requirements` with manifest path, observed SHA-256,
+`asserted_candidate` authority, and parsed requirements; it also references that source.
+Without an explicit request, or when inspection fails/becomes stale, no candidate is
+returned. The service does not read or create the declared output files.
+
+This candidate is neither an execution grant nor evidence of successful completion.
+A consumer must revalidate the source, explicitly adopt requirements into its task,
+and verify actual execution independently. CM's draft adapter checks matching source
+hashes and rejects unrequested candidates; automatic task adoption is not implemented.
+The additive draft schemas must be synchronized by consumers before using this field.

@@ -1,4 +1,31 @@
-# Progress
+# Current
+
+2026-09-12: optional artifact requirement candidate transport implemented in the
+independent service. Explicit source selection, bounded unique file requirements,
+source hash/reference and snapshot revalidation preserve asserted-candidate authority.
+No artifact creation, execution, or CM dependency was added.
+
+# Done
+
+Machine-port focused suite: 22 tests passed before documentation updates. Paired CM
+suite: 9 tests / 37 assertions passed, including source mutation revocation and
+unrequested/unreferenced candidate refusal. CM typecheck passed.
+
+# Remaining
+
+Full standalone suite passed: 57 tests, 6.493 seconds. Contract mirror verification,
+commits and remote CI remain.
+Explicit runtime adoption, reviewed authority, external closeout and the remaining
+real-provider/device takeover matrix are not complete. Distribution remains 1.2.1;
+this source change is not a release or installed-standard update.
+
+# Next
+
+Run the standalone regression suite and verify paired contract bytes before publishing
+this independently usable candidate interface.
+
+## Previous released baseline and native acceptance
+
 
 ## Current
 

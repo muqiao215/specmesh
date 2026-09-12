@@ -47,6 +47,45 @@ class MachinePortTests(unittest.TestCase):
         self.request.update(operation='verify_closeout',task_path='task')
         self.assertEqual(self.service.check(self.request)['status'],'unknown')
 
+    def test_explicit_artifact_requirements_are_candidates_not_execution(self):
+        requirements = {"schema_version": "specmesh.artifact_requirements.v1", "files": [{"path": "not-created.txt", "mode": "write"}]}
+        path = self.root / "requirements.json"
+        path.write_text(json.dumps(requirements))
+        before = path.read_bytes()
+        self.assertNotIn("artifact_requirements", self.service.check(self.request))
+        self.request["requirements_path"] = "requirements.json"
+        result = self.service.check(self.request)
+        self.assertEqual(result["status"], "pass")
+        candidate = result["artifact_requirements"]
+        self.assertEqual(candidate["authority"], "asserted_candidate")
+        self.assertEqual(candidate["requirements"], requirements)
+        self.assertEqual(candidate["sha256"], hashlib.sha256(before).hexdigest())
+        self.assertIn("requirements.json", [item["path"] for item in result["references"]])
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse((self.root / "not-created.txt").exists())
+
+    def test_invalid_artifact_requirements_fail_closed(self):
+        path = self.root / "requirements.json"
+        self.request["requirements_path"] = "requirements.json"
+        for files in ([], [{"path": "../outside", "mode": "write"}], [{"path": ".git/config", "mode": "read"}],
+                      [{"path": "same", "mode": "write"}] * 2, [{"path": "result", "mode": "execute"}],
+                      [{"path": "result", "mode": "write", "sha256": "bad"}]):
+            path.write_text(json.dumps({"schema_version": "specmesh.artifact_requirements.v1", "files": files}))
+            result = self.service.check(self.request)
+            self.assertEqual(result["status"], "blocked")
+            self.assertNotIn("artifact_requirements", result)
+        self.request["requirements_path"] = "../requirements.json"
+        self.assertEqual(self.service.check(self.request)["status"], "blocked")
+
+    def test_artifact_requirements_change_during_snapshot_invalidates_candidate(self):
+        path = self.root / "requirements.json"
+        path.write_text(json.dumps({"schema_version": "specmesh.artifact_requirements.v1", "files": [{"path": "result", "mode": "write"}]}))
+        self.request["requirements_path"] = "requirements.json"
+        self.during_metadata(lambda: path.write_text("{}"))
+        result = self.service.check(self.request)
+        self.assertEqual(result["status"], "blocked")
+        self.assertNotIn("artifact_requirements", result)
+
     def during_metadata(self, action):
         original = self.service._metadata
         calls = 0
