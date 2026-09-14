@@ -22,18 +22,18 @@ SPEC.md 仍是已发布规范；本次方向在活动计划中规划，不代表
 默认在主工作区推进，确需并行或测试隔离才使用独立目录/worktree；保留已有直接 push 授权，不一律要求 PR。已配置授权的 CBC/AGY 等可按任务承担实现/审查；S3 的单次模型调用范围已确认，尚未执行。产品验收是否需真实 provider 与开发执行者身份分开判断；发布/安装按对应卡授权处理。
 
 ## Current State
-2026-09-14 规划前本机 main 为 `d393c548a2a58989d65e6cdbd60a36e9a81a444f`，工作区 clean。规范 v1.1.0；2026-09-13 审计核对最新发行 v1.2.1 为 `5fab9f0`，main 的 artifact-requirements 增量已有独立 CI，但尚未进入新发行。该远端状态是审计时观察，本轮没有重测。
 
-SM-P0 独立 CLI/有界合同、SM-P1 声明 POSIX 快照的窄出口已有通过证据，应直接复用。原生 same-session 只读 canary 不关闭全新 Agent 验收。Map v0 与 Area Overlay 保留实验身份。本次四个增量验收单元当前 3/4；文档规划完成不算产品通过。
+2026-09-15 独立可用版S1/S2/S3/R1全部独立接受，4/4；不是全平台或旧CM集成完成。
 
-SM-P0.S1 经用户追加第 3 次定点续修后，已获原审查者独立接受：A–F 通过，78 项相关回归通过，两个真实 Map 查询恢复。累计尝试 3，前两轮失败与第 3 次补丁保留；实现未提交、未发布。见 [S1 独立验收](plans/bounded-delivery/evidence/SM-P0.S1/acceptance.md)。
+v1.3.0已正式发行，源码/tag为0bfdfd1d4c79bdefc5926b87877253e69a6f93a7；CI34896336208的Python3.11/3.12各112项通过。远端下载包29/29文件匹配且与tag源码逐文件一致；本机specmesh --version=1.3.0，隔离运行及版本切换/回退验收通过。规范仍v1.1.0、全局标准链接未改。
 
-2026-09-15 S2累计第5次实现后，原独立审查者接受A～F；Python3.11/3.12全套107/107通过。当前S1/S2/S3共3/4。S3全新AGY B单次完成真实命令，经独立接受；R1源码准备与独立发行验收进行中。
-[S2接受](plans/bounded-delivery/evidence/SM-P1.S2/acceptance.md)；[S3执行](plans/bounded-delivery/evidence/SM-P4.S3/execution.md)。此前失败和平台拦截记录保留。
+S1累计尝试3；S2累计实现尝试5；S3全新AGY B调用1、修正0，真实产物和dirty保留获独立接受；R1修正1。费用unknown，已知S3 token字段及全部失败记录保留在[活动交付记录](plans/bounded-delivery/progress.md)。
+
+[Release](https://github.com/muqiao215/specmesh/releases/tag/v1.3.0) · [最终验收](plans/bounded-delivery/evidence/SM-P0.R1/acceptance.md)。后续文档收口提交不改变已发布源码/tag身份。
 
 ## Current Priority
 
-完成R1：精确源码提交及CI、v1.3.0工件、干净安装、实际入口和升级/回退对账。S1～S3已接受；CM接轨不在范围。
+本轮独立交付已完成，无待自动执行任务。后续按真实需求另行确定，不自动恢复CM接轨、Map v1或provider/device扩展。
 
 ## Knowledge Map
 - Normative rules → [SPEC.md](SPEC.md)

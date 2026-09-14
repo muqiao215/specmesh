@@ -2,7 +2,7 @@
 
 当前活动计划唯一入口：[bounded-delivery/task_plan.md](bounded-delivery/task_plan.md)；[状态](bounded-delivery/progress.md)；[依据与旧任务映射](bounded-delivery/findings.md)。
 
-2026-09-15：S1/S2/S3 accepted（3/4）；R1 v1.3.0发行验收进行中。当前证据见各卡acceptance.md；旧失败及调用记录保留。
+2026-09-15：S1/S2/S3/R1 accepted（4/4），v1.3.0已发行、本机入口可用。见[R1最终验收](bounded-delivery/evidence/SM-P0.R1/acceptance.md)。本轮无待自动执行项。
 
 旧任务保存已验证的范围和历史证据，不构成另一条活动执行线：
 

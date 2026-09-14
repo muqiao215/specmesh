@@ -1,10 +1,12 @@
 # Progress
 
-> 最新：S1/S2/S3已独立接受（3/4）；R1发行验收进行中。下方旧结果按历史保留。
+> 最新：S1/S2/S3/R1全部独立接受（4/4），v1.3.0已发行并安装；旧结果按历史保留。
 
 ## Current
 
-S1/S2/S3已独立接受，整体3/4。S2累计实现5次；S3全新AGY B执行1次、修正0，原dirty和固定测试保留。R1整合原hash脚本，版本1.3.0，Python3.12全套112/112通过，正在核对源码准备、CI、发行与安装回退。未正式发布，历史失败详见各卡evidence。
+done
+
+独立可用版4/4。源码/tag0bfdfd1d4c79bdefc5926b87877253e69a6f93a7，v1.3.0正式发行；双Python CI各112/112、远端下载和安装29/29、smoke各6项通过。specmesh --version=1.3.0。见[R1证据](evidence/SM-P0.R1/release.md)、[独立接受](evidence/SM-P0.R1/acceptance.md)。文档收口不改发行源码身份。
 
 ## Done
 
@@ -35,22 +37,24 @@ S1/S2/S3已独立接受，整体3/4。S2累计实现5次；S3全新AGY B执行1�
 
 ## Remaining
 
-| 单元 | 状态 | 尚未发生的出口 |
-|---|---|---|
-| SM-P0.S1 | accepted | A–F 已通过，无剩余 S1 出口；未发布 |
-| SM-P1.S2 | accepted | 原审查者接受A～F，107/107；见acceptance.md |
-| SM-P4.S3 | accepted | 实际产物/dirty保留/取消拒绝获独立接受 |
-| SM-P0.R1 | candidate prepared | ZIP及解包自检完成；正式发行、长期安装/升级/回退待验收 |
+无本轮必做剩余项。
 
-2026-09-15 用户确认长期独立发展：旧 SM-P2 CM lifecycle、X-01 CM 等义适配和 X-02 三仓组合退出必做范围，非完成。独立权威与真实交接仍由 S2/S3 验收；更广信任模型及完整 provider/device 矩阵为可选扩展。历史 Done 中的“留为开放”记录由本次决定覆盖；四单元仍 1/4。
+| 单元 | 状态 | 证据 |
+|---|---|---|
+| S1 | accepted | evidence/SM-P0.S1/acceptance.md |
+| S2 | accepted | evidence/SM-P1.S2/acceptance.md |
+| S3 | accepted | evidence/SM-P4.S3/acceptance.md |
+| R1 | accepted | evidence/SM-P0.R1/acceptance.md |
+
+CM接轨已退出范围，非完成；Map v1及更广provider/device矩阵仅可选未来需求，不影响本轮4/4。
 
 ## Issues
 
-无S2/S3剩余阻断项。R1尚缺提交后CI、远端发行与安装/回退完整证据；不提前标4/4。累计完整费用unknown，S3已知token字段保存在execution.md。
+无当前阻断项。限制：声明POSIX/Python3.11/3.12 profile，完整性校验不是来源签名；回退演练基线为本任务rc1候选，不宣称正式v1.2.1升级覆盖。历史错误及检查局限保留在各卡证据，累计完整费用unknown。
 
 ## Next
 
-完成R1源码独立准备审查，再执行精确提交、CI、发行工件和隔离安装/回退，最后记录独立验收。
+无；完成文档收口，不自动启动下一任务或CM接轨。
 
 ## 本轮自查
 

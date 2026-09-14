@@ -32,7 +32,7 @@ missing files. `git_reader.py` owns bounded, filter-free Git plumbing with trans
 inside this independent package; host adapters mirror and validate them. No module imports CM or
 History Viewer. Assertions, derived references and externally verified results remain distinct.
 
-The 1.3.0rc1 candidate adds project_state.py for finite, source-bound declaration extraction and
+The released 1.3.0 runtime adds project_state.py for finite, source-bound declaration extraction and
 handoff.py for caller-scoped dirty retention and full live-material comparison. A handoff never
 grants execution authority. The service keeps these reads inside one descriptor snapshot and
 requires trusted task/files at consumption. See the interface document for explicit bounds.
@@ -40,3 +40,7 @@ requires trusted task/files at consumption. See the interface document for expli
 scripts/build_release.py creates a deterministic allowlisted archive with source/file identities;
 scripts/smoke_release.py validates an unpacked package in a fresh Python process and disposable Git
 fixture. Those local distribution checks do not constitute S3 fresh-Agent acceptance.
+
+The distribution includes scripts/verify_install.py for declared-file hash checks, not signature
+verification. Versioned runtime directories can be switched without altering project memory or
+the normative standard link. Release/installation acceptance is recorded in the bounded-delivery plan.

@@ -2,7 +2,7 @@
 
 > 2026-09-15 范围决定：SpecMesh 独立发展，不再要求 CM 接轨。下文 CM 适配要求、SM-A10 配对验收和历史外仓状态仅作追溯，不是当前交付义务。SM-P2 退出范围而非完成；独立权威/真实交接由活动计划 S2/S3 承接。更广信任模型及完整 provider/device 矩阵仅为可选扩展，不绑定 Orca。
 
-> 2026-09-14 承接说明：当前唯一活动交付计划为 [bounded-delivery](../bounded-delivery/task_plan.md)，状态见 [progress](../bounded-delivery/progress.md)。先独立状态、dirty 交接、全新 Agent B 实际结果和独立发行；当前S1已接受，S2主助手本地修复/双Python验证通过但独立审查平台阻塞，S3未运行，R1仅候选准备。本文件下方保留原阶段及历史范围，不是另一条待自动执行的主线。
+> 2026-09-15 收口：独立交付在 [bounded-delivery](../bounded-delivery/task_plan.md) 已4/4接受，v1.3.0正式发行并安装。本文件只保存旧阶段历史；CM接轨已退出范围，不自动恢复其待办。
 >
 > 2026-09-13 审计确认 SM-P0 Acceptance 列窄技术出口通过（下方 planned 为旧状态），SM-P1 限声明 POSIX profile 通过；不重做或扩大这两项结论。原 progress 的“commits/remote CI remain”已由该审计纠正。更广的 CM lifecycle、外部验收和 provider/device 条件仍开放，映射及证据见 [当前 findings](../bounded-delivery/findings.md)。
 
