@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SpecMeshProjectState",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "state", "project", "task", "goals", "constraints", "success_criteria", "blockers", "declared_status", "evidence", "history", "next_steps", "baseline", "issues"],
+  "properties": {
+    "schema_version": {"enum": ["specmesh.project-state.v1"]},
+    "state": {"enum": ["observed", "unknown", "ambiguous", "blocked"]},
+    "project": {"$ref": "#/$defs/identity"},
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "path", "value", "candidates", "sources"],
+      "properties": {
+        "state": {"enum": ["selected", "unknown", "ambiguous"]},
+        "path": {"anyOf": [{"type": "string", "maxLength": 4096}, {"type": "null"}]},
+        "value": {"anyOf": [{"type": "string", "maxLength": 4096}, {"type": "null"}]},
+        "candidates": {"type": "array", "maxItems": 50, "items": {"type": "string", "maxLength": 4096}},
+        "sources": {"type": "array", "maxItems": 10, "items": {"$ref": "#/$defs/source"}}
+      }
+    },
+    "goals": {"$ref": "#/$defs/statements"},
+    "constraints": {"$ref": "#/$defs/statements"},
+    "success_criteria": {"$ref": "#/$defs/statements"},
+    "blockers": {"$ref": "#/$defs/statements"},
+    "declared_status": {"$ref": "#/$defs/statements"},
+    "evidence": {"$ref": "#/$defs/statements"},
+    "history": {"$ref": "#/$defs/statements"},
+    "next_steps": {"$ref": "#/$defs/statements"},
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed_head", "expected_head", "head_matches", "coverage"],
+      "properties": {
+        "observed_head": {"anyOf": [{"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"}, {"type": "null"}]},
+        "expected_head": {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"},
+        "head_matches": {"type": "boolean"},
+        "coverage": {"type": "array", "maxItems": 50, "items": {"$ref": "#/$defs/coverage"}}
+      }
+    },
+    "issues": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/issue"}}
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "line_start", "line_end", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "line_start": {"type": "integer", "minimum": 1},
+        "line_end": {"type": "integer", "minimum": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "authority", "source"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "authority": {"enum": ["asserted_candidate"]},
+        "source": {"$ref": "#/$defs/source"}
+      }
+    },
+    "statements": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/statement"}},
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "value", "sources"],
+      "properties": {
+        "state": {"enum": ["known", "unknown"]},
+        "value": {"anyOf": [{"type": "string", "maxLength": 4096}, {"type": "null"}]},
+        "sources": {"type": "array", "maxItems": 10, "items": {"$ref": "#/$defs/source"}}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "tracked", "modified"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "tracked": {"type": "boolean"},
+        "modified": {"type": "boolean"}
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "field", "message"],
+      "properties": {
+        "code": {"type": "string", "minLength": 1, "maxLength": 200},
+        "severity": {"enum": ["info", "warning", "error"]},
+        "field": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "message": {"type": "string", "minLength": 1, "maxLength": 4096}
+      }
+    }
+  }
+}

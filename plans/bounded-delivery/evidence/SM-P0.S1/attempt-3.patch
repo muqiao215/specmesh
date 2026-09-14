@@ -1,0 +1,162 @@
+--- /tmp/specmesh-attempt3-xHupYV/scripts/map_v0.py	2026-09-14 02:00:42.556836624 +0800
++++ scripts/map_v0.py	2026-09-14 02:01:57.249700209 +0800
+@@ -666,15 +666,27 @@
+     section = _area_section(resolution, query_terms, budget // 3)
+     section_tokens = len(tokenize(section)) if section else 0
+     nodes = sorted(graph["nodes"], key=lambda node: (-scores.get(node["id"], 0.0), node["id"]))
++    by_id = {node["id"]: node for node in nodes}
++    configurations: dict[str, set[str]] = defaultdict(set)
++    if query:
++        # Keep a selected entry's asserted configuration in the same budgeted
++        # bundle; symbol density must not orphan this explicit navigation edge.
++        for edge in graph["edges"]:
++            if (edge["relation"] == "configured_by" and edge["provenance"] == "asserted"
++                    and (edge.get("scope") is None or edge["scope"] in injectable)):
++                configurations[edge["from"]].add(edge["to"])
+     selected: set[str] = set()
+     for node in nodes:
+-        if node["id"] in gated_nodes:
++        if node["id"] in gated_nodes or node["id"] in selected:
+             continue
+-        line = f"- {node['id']} [{node['kind']}; {node['authority']}]\n"
++        bundle = [node] + [by_id[target] for target in sorted(configurations.get(node["id"], ()))
++                           if target in by_id and target != node["id"]
++                           and target not in selected and target not in gated_nodes]
++        line = "".join(f"- {item['id']} [{item['kind']}; {item['authority']}]\n" for item in bundle)
+         if len(tokenize(output + line)) > budget - section_tokens:
+             continue
+         output += line
+-        selected.add(node["id"])
++        selected.update(item["id"] for item in bundle)
+     output += section
+     for edge in graph["edges"]:
+         scope = edge.get("scope")
+--- /tmp/specmesh-attempt3-xHupYV/specmesh_port/project_state.py	2026-09-14 02:00:42.556836624 +0800
++++ specmesh_port/project_state.py	2026-09-14 02:01:57.248700263 +0800
+@@ -276,10 +276,12 @@
+         issues.append({"code": "next_step_ambiguous", "severity": "warning", "field": "next_steps",
+                        "message": "More than one next-step statement is present."})
+ 
+-    classes = _classifications(declared_status + blockers)
+-    if "done" in classes and ("failed" in classes or "unknown" in classes):
++    current_classes = _classifications(declared_status)
++    classes = current_classes | _classifications(blockers)
++    if len(current_classes) > 1 or ("done" in classes and ("failed" in classes or "unknown" in classes)):
+         issues.append({"code": "declared_status_conflict", "severity": "warning", "field": "declared_status",
+-                       "message": "Completion and failed/unknown declarations coexist; no completion is inferred."})
++                       "message": "Conflicting current declarations or completion with failed/unknown blockers; "
++                                  "no completion is inferred. Current classes: " + ", ".join(sorted(current_classes))})
+ 
+     if any(item["severity"] == "error" for item in issues):
+         state = "blocked"
+--- /tmp/specmesh-attempt3-xHupYV/tests/test_map_v0.py	2026-09-14 02:00:42.556836624 +0800
++++ tests/test_map_v0.py	2026-09-14 02:01:29.515206048 +0800
+@@ -4,6 +4,7 @@
+ import tempfile
+ import unittest
+ from pathlib import Path
++from unittest.mock import patch
+ 
+ 
+ REPO_ROOT = Path(__file__).resolve().parents[1]
+@@ -78,6 +79,28 @@
+         rust_nodes = [node for node in graph["nodes"] if node["id"].startswith("code://main.rs")]
+         self.assertEqual(rust_nodes, [{"id": "code://main.rs", "kind": "file", "name": "main.rs", "authority": "derived"}])
+ 
++    def test_focus_configuration_bundle_obeys_scope_authority_and_budget(self):
++        nodes = [{"id": address, "name": address, "kind": "file", "authority": "derived"}
++                 for address in ("code://entry.py", "code://noise.py", "code://settings.toml")]
++        edge = {"from": nodes[0]["id"], "to": nodes[2]["id"],
++                "relation": "configured_by", "provenance": "asserted"}
++        graph = {"nodes": nodes, "edges": [edge], "source_fingerprint": "fixture",
++                 "sources": [{"path": n['id'][7:]} for n in nodes]}
++        scores = {n['id']: 3 - i for i, n in enumerate(nodes)}
++        header = '# SpecMesh Map v0 (focus)\ntask: entry\nsource: fixture\n'
++        pair = ''.join(f"- {n['id']} [file; derived]\n" for n in (nodes[0], nodes[2]))
++        budget = len(map_v0.tokenize(header + pair))
++        with patch.object(map_v0, '_rank', return_value=scores):
++            view = map_v0.render_view(graph, budget, 'entry')
++            self.assertIn('code://settings.toml', view)
++            self.assertNotIn('code://noise.py', view)
++            self.assertLessEqual(len(map_v0.tokenize(view)), budget)
++            edge['scope'] = 'area:inactive'
++            self.assertNotIn('code://settings.toml', map_v0.render_view(graph, budget, 'entry'))
++            del edge['scope']
++            edge['provenance'] = 'derived'
++            self.assertNotIn('code://settings.toml', map_v0.render_view(graph, budget, 'entry'))
++
+     def test_asserted_and_derived_provenance_remain_distinct(self):
+         graph = map_v0.build_graph(self.root)
+         asserted = [edge for edge in graph["edges"] if edge["provenance"] == "asserted"]
+@@ -131,6 +154,21 @@
+ 
+ 
+ class RealTaskFocusTests(unittest.TestCase):
++    def test_symbol_extraction_retains_configuration_entry(self):
++        self._assert_configuration_entry("fix Python public symbol extraction")
++
++    def test_cache_freshness_retains_configuration_entry(self):
++        self._assert_configuration_entry("verify content hash freshness and cache rebuild")
++
++    def _assert_configuration_entry(self, query):
++        graph = map_v0.build_graph(REPO_ROOT)
++        view = map_v0.render_view(graph, 800, query)
++        for address in ("code://.specmesh/context.md", "code://scripts/map_v0.py",
++                        "code://tests/test_map_v0.py"):
++            self.assertTrue(any(line.startswith(f"- {address} [") for line in view.splitlines()),
++                            f"Missing node {address} for {query}")
++        self.assertLessEqual(len(map_v0.tokenize(view)), 800)
++
+     TASKS = (
+         "change global and focus token budgets",
+         "fix Python public symbol extraction",
+--- /tmp/specmesh-attempt3-xHupYV/tests/test_machine_port.py	2026-09-14 02:00:42.556836624 +0800
++++ tests/test_machine_port.py	2026-09-14 02:01:29.515206048 +0800
+@@ -202,6 +202,24 @@
+         self.assertIn('declared_status_conflict', codes)
+         self.assertIn('- verification failed', [row['text'] for row in state['blockers']])
+ 
++    def test_done_and_in_progress_current_declarations_conflict_with_sources(self):
++        self._write_state_fixture()
++        plan = self.root / 'plans/current/task_plan.md'
++        plan.write_text(plan.read_text().replace('## Status\nin progress', '## Status\ndone'))
++        state = self.service.project_state(self.request)
++        self.assertEqual([row['text'] for row in state['declared_status']], ['done', 'in progress'])
++        self.assertEqual(state['state'], 'ambiguous')
++        self.assertIn('declared_status_conflict', [issue['code'] for issue in state['issues']])
++        self.assertIs(validate('specmesh-project-state', state), state)
++        rendered = render_project_state(state)
++        for row, path in zip(state['declared_status'],
++                             ('plans/current/task_plan.md', 'plans/current/progress.md')):
++            self.assertEqual(row['source']['path'], path)
++            self.assertGreater(row['source']['line_start'], 0)
++            self.assertRegex(row['source']['sha256'], r'^[0-9a-f]{64}$')
++            self.assertIn(path, rendered)
++        self.assertIn('declared_status_conflict', rendered)
++
+     def test_done_claim_does_not_satisfy_missing_evidence(self):
+         self._write_state_fixture()
+         (self.root / 'plans/current/findings.md').write_text('# Findings\n')
+@@ -225,6 +243,22 @@
+                          ['- First review failed.', '- Correction completed.'])
+         self.assertNotIn('declared_status_conflict', [item['code'] for item in state['issues']])
+ 
++    def test_current_status_normalization_preserves_observed_contract(self):
++        self._write_state_fixture()
++        plan = self.root / 'plans/current/task_plan.md'
++        progress = self.root / 'plans/current/progress.md'
++        for left, right, expected in (('in progress', 'done', 'ambiguous'),
++                                      ('ready', 'in progress', 'ambiguous'),
++                                      ('completed', 'done', 'observed'),
++                                      ('working', 'in-progress', 'observed')):
++            with self.subTest(left=left, right=right):
++                plan.write_text('# Task\n\n## Goal\nRead state.\n\n## Success\nRead sources.\n\n## Status\n' + left + '\n')
++                progress.write_text('# Progress\n\n## Current\n' + right +
++                                    '\n\n## Issues\n\n## Next\nReview.\n\n## Done\nOld attempt failed.\n')
++                state = self.service.project_state(self.request)
++                self.assertEqual(state['state'], expected)
++                self.assertIs(validate('specmesh-project-state', state), state)
++
+     def test_missing_blocker_field_is_unknown_but_empty_heading_is_explicit(self):
+         self._write_state_fixture()
+         state = self.service.project_state(self.request)

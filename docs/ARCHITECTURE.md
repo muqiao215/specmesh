@@ -9,8 +9,8 @@ scripts/map_v0.py derives a deterministic, budgeted graph from code/Git and revi
 output and is never authoritative or tracked. Area ambiguity or pending rebind suppresses scoped
 memory; malformed authoritative declarations fail loudly.
 
-History Viewer may show these files and old conversations. ControlMesh may execute agents working
-on them. Neither changes the normative ownership of reviewed project knowledge. Markdown adoption
+External viewers and agent runners may consume these files through independent interfaces.
+No CM, History or Orca integration is required for development, acceptance or release. Markdown adoption
 installs SPEC.md as the user's standard and uses templates only where a controlled project's actual
 needs justify them. The optional machine profile runs independently as a bounded subprocess;
 Markdown adoption does not require it.
@@ -31,3 +31,12 @@ missing files. `git_reader.py` owns bounded, filter-free Git plumbing with trans
 `__main__.py` exposes a capability descriptor and read-only request/result JSON. Contracts stay
 inside this independent package; host adapters mirror and validate them. No module imports CM or
 History Viewer. Assertions, derived references and externally verified results remain distinct.
+
+The 1.3.0rc1 candidate adds project_state.py for finite, source-bound declaration extraction and
+handoff.py for caller-scoped dirty retention and full live-material comparison. A handoff never
+grants execution authority. The service keeps these reads inside one descriptor snapshot and
+requires trusted task/files at consumption. See the interface document for explicit bounds.
+
+scripts/build_release.py creates a deterministic allowlisted archive with source/file identities;
+scripts/smoke_release.py validates an unpacked package in a fresh Python process and disposable Git
+fixture. Those local distribution checks do not constitute S3 fresh-Agent acceptance.

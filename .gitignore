@@ -1,3 +1,4 @@
 .specmesh/cache/
 __pycache__/
 *.pyc
+/dist/

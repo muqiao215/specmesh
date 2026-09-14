@@ -10,6 +10,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from specmesh_port.service import SpecMeshService
+from specmesh_port.contracts_runtime import validate
+from specmesh_port.project_state import render_project_state
 from specmesh_port.snapshot import DocumentSnapshot, MAX_DOCUMENT_BYTES
 from specmesh_port.git_reader import read_git, MAX_GIT_OUTPUT
 
@@ -98,6 +100,284 @@ class MachinePortTests(unittest.TestCase):
             return result
         with patch.object(self.service, '_metadata', side_effect=observe):
             return self.service.check(self.request)
+
+    def _write_state_fixture(self):
+        (self.root / 'PROJECT.md').write_text(
+            '# Demo Project\n\n'
+            '## Why\nKeep project knowledge continuous.\n\n'
+            '## User Intent\nShip a standalone state reader.\n\n'
+            '## Constraints\n- Stay offline.\n\n'
+            '## Success\nA new reader can locate the current work.\n\n'
+            '## Knowledge Map\n- Active work → [plan](plans/current/task_plan.md)\n')
+        task = self.root / 'plans/current'; task.mkdir(parents=True)
+        (task / 'task_plan.md').write_text(
+            '# Deliver project state\n\n## Goal\nExpose sourced state.\n\n'
+            '## Requirements\n- Preserve legacy output.\n\n## Success\nJSON validates.\n\n'
+            '## Status\nin progress\n\n## Next Step\nImplement the state reader.\n')
+        (task / 'findings.md').write_text('# Findings\n\n## Evidence\n- Baseline behavior recorded.\n')
+        (task / 'progress.md').write_text(
+            '# Progress\n\n## Current\nin progress\n\n## Done\n- Fixture prepared.\n\n'
+            '## Issues\n\n## Next\nImplement the state reader.\n')
+        subprocess.run(['git', '-C', str(self.root), 'add', '.'], check=True)
+        subprocess.run(['git', '-C', str(self.root), '-c', 'user.name=Fixture',
+                        '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'state fixture'], check=True)
+        self.head = subprocess.check_output(['git', '-C', str(self.root), 'rev-parse', 'HEAD'], text=True).strip()
+        self.request.update(operation='inspect', expected_head=self.head, task_path='plans/current')
+
+    def test_project_state_model_is_complete_sourced_and_schema_valid(self):
+        self._write_state_fixture()
+        state = self.service.project_state(self.request)
+        self.assertIs(validate('specmesh-project-state', state), state)
+        self.assertEqual(state['schema_version'], 'specmesh.project-state.v1')
+        self.assertEqual(state['state'], 'observed')
+        self.assertEqual(state['project']['value'], 'Demo Project')
+        self.assertEqual(state['task']['value'], 'Deliver project state')
+        self.assertEqual(state['baseline']['observed_head'], self.head)
+        self.assertTrue(state['baseline']['head_matches'])
+        self.assertIn('Expose sourced state.', [row['text'] for row in state['goals']])
+        self.assertIn('- Preserve legacy output.', [row['text'] for row in state['constraints']])
+        self.assertIn('JSON validates.', [row['text'] for row in state['success_criteria']])
+        for field in ('goals', 'constraints', 'success_criteria', 'declared_status', 'evidence', 'next_steps'):
+            for row in state[field]:
+                self.assertEqual(row['authority'], 'asserted_candidate')
+                self.assertRegex(row['source']['sha256'], r'^[0-9a-f]{64}$')
+                self.assertGreaterEqual(row['source']['line_start'], 1)
+
+    def test_project_state_reads_labeled_acceptance_table_without_header(self):
+        self._write_state_fixture()
+        plan = self.root / 'plans/current/task_plan.md'
+        plan.write_text(
+            '# Deliver project state\n\n## Status\nin progress\n\n'
+            '### SM-P0.S1\n\n**可观察行为。**\nRead current state.\n\n'
+            '**允许写范围。** Only the state module.\n\n'
+            '**冻结验收清单（全部满足才关闭 S1）。**\n\n'
+            '| Check | Expected |\n|---|---|\n| S1-A | JSON validates |\n\n'
+            '**权限、预算与停止。**\nNo provider calls.\n')
+        state = self.service.project_state(self.request)
+        self.assertIn('Read current state.', [row['text'] for row in state['goals']])
+        self.assertIn('Only the state module.', [row['text'] for row in state['constraints']])
+        self.assertIn('No provider calls.', [row['text'] for row in state['constraints']])
+        self.assertEqual([row['text'] for row in state['success_criteria']], ['| S1-A | JSON validates |'])
+
+    def test_project_state_json_and_text_share_one_model(self):
+        self._write_state_fixture()
+        source = Path(__file__).resolve().parents[1]
+        command = [os.sys.executable, '-m', 'specmesh_port', '--allowed-root', str(self.root)]
+        payload = json.dumps(self.request)
+        json_result = subprocess.run(command + ['--project-state', 'json'], cwd=source, input=payload,
+                                     capture_output=True, text=True, timeout=10)
+        text_result = subprocess.run(command + ['--project-state', 'text'], cwd=source, input=payload,
+                                     capture_output=True, text=True, timeout=10)
+        self.assertEqual(json_result.returncode, 0, json_result.stderr)
+        self.assertEqual(text_result.returncode, 0, text_result.stderr)
+        state = json.loads(json_result.stdout)
+        self.assertEqual(text_result.stdout, render_project_state(state))
+        self.assertIn('PROJECT.md:1; sha256:', text_result.stdout)
+        self.assertIn('plans/current/task_plan.md:1; sha256:', text_result.stdout)
+        self.assertIn('authority:asserted_candidate', text_result.stdout)
+        for field in ('goals', 'constraints', 'success_criteria', 'declared_status', 'evidence', 'next_steps'):
+            for row in state[field]:
+                self.assertIn(row['text'], text_result.stdout)
+
+    def test_project_state_requires_explicit_task_and_reports_ambiguous_candidates(self):
+        (self.root / 'PROJECT.md').write_text(
+            '# Demo\n\n## Knowledge Map\n'
+            '- [First](plans/first/task_plan.md)\n- [Second](plans/second/task_plan.md)\n')
+        self.request.update(operation='inspect', task_path=None)
+        state = self.service.project_state(self.request)
+        self.assertEqual(state['state'], 'ambiguous')
+        self.assertEqual(state['task']['state'], 'ambiguous')
+        self.assertEqual(state['task']['candidates'], ['plans/first', 'plans/second'])
+        self.assertIn('task_selection_ambiguous', [item['code'] for item in state['issues']])
+
+    def test_missing_evidence_and_conflicting_done_failure_never_complete_state(self):
+        self._write_state_fixture()
+        (self.root / 'plans/current/findings.md').write_text('# Findings\n')
+        (self.root / 'plans/current/progress.md').write_text(
+            '# Progress\n\n## Current\ndone\n\n## Issues\n- verification failed\n\n## Next\nRepair validation.\n')
+        state = self.service.project_state(self.request)
+        self.assertEqual(state['state'], 'ambiguous')
+        codes = [item['code'] for item in state['issues']]
+        self.assertIn('state_field_unknown', codes)
+        self.assertIn('declared_status_conflict', codes)
+        self.assertIn('- verification failed', [row['text'] for row in state['blockers']])
+
+    def test_done_and_in_progress_current_declarations_conflict_with_sources(self):
+        self._write_state_fixture()
+        plan = self.root / 'plans/current/task_plan.md'
+        plan.write_text(plan.read_text().replace('## Status\nin progress', '## Status\ndone'))
+        state = self.service.project_state(self.request)
+        self.assertEqual([row['text'] for row in state['declared_status']], ['done', 'in progress'])
+        self.assertEqual(state['state'], 'ambiguous')
+        self.assertIn('declared_status_conflict', [issue['code'] for issue in state['issues']])
+        self.assertIs(validate('specmesh-project-state', state), state)
+        rendered = render_project_state(state)
+        for row, path in zip(state['declared_status'],
+                             ('plans/current/task_plan.md', 'plans/current/progress.md')):
+            self.assertEqual(row['source']['path'], path)
+            self.assertGreater(row['source']['line_start'], 0)
+            self.assertRegex(row['source']['sha256'], r'^[0-9a-f]{64}$')
+            self.assertIn(path, rendered)
+        self.assertIn('declared_status_conflict', rendered)
+
+    def test_done_claim_does_not_satisfy_missing_evidence(self):
+        self._write_state_fixture()
+        (self.root / 'plans/current/findings.md').write_text('# Findings\n')
+        (self.root / 'plans/current/progress.md').write_text(
+            '# Progress\n\n## Current\nin progress\n\n## Done\n- Implementation claims completion.\n\n'
+            '## Issues\n\n## Next\nReview the result.\n')
+        state = self.service.project_state(self.request)
+        self.assertEqual(state['state'], 'unknown')
+        self.assertEqual(state['evidence'], [])
+        self.assertIn('- Implementation claims completion.', [row['text'] for row in state['history']])
+        self.assertIn('evidence', [item['field'] for item in state['issues'] if item['code'] == 'state_field_unknown'])
+
+    def test_historical_failures_remain_visible_without_changing_current_state(self):
+        self._write_state_fixture()
+        progress = self.root / 'plans/current/progress.md'
+        progress.write_text(progress.read_text().replace('- Fixture prepared.',
+                                 '- First review failed.\n- Correction completed.'))
+        state = self.service.project_state(self.request)
+        self.assertEqual(state['state'], 'observed')
+        self.assertEqual([row['text'] for row in state['history']],
+                         ['- First review failed.', '- Correction completed.'])
+        self.assertNotIn('declared_status_conflict', [item['code'] for item in state['issues']])
+
+    def test_current_status_normalization_preserves_observed_contract(self):
+        self._write_state_fixture()
+        plan = self.root / 'plans/current/task_plan.md'
+        progress = self.root / 'plans/current/progress.md'
+        for left, right, expected in (('in progress', 'done', 'ambiguous'),
+                                      ('ready', 'in progress', 'ambiguous'),
+                                      ('completed', 'done', 'observed'),
+                                      ('working', 'in-progress', 'observed')):
+            with self.subTest(left=left, right=right):
+                plan.write_text('# Task\n\n## Goal\nRead state.\n\n## Success\nRead sources.\n\n## Status\n' + left + '\n')
+                progress.write_text('# Progress\n\n## Current\n' + right +
+                                    '\n\n## Issues\n\n## Next\nReview.\n\n## Done\nOld attempt failed.\n')
+                state = self.service.project_state(self.request)
+                self.assertEqual(state['state'], expected)
+                self.assertIs(validate('specmesh-project-state', state), state)
+
+    def test_missing_blocker_field_is_unknown_but_empty_heading_is_explicit(self):
+        self._write_state_fixture()
+        state = self.service.project_state(self.request)
+        self.assertEqual(state['state'], 'observed')
+        self.assertEqual(state['blockers'], [])
+        progress = self.root / 'plans/current/progress.md'
+        progress.write_text(progress.read_text().replace('## Issues\n\n', ''))
+        missing = self.service.project_state(self.request)
+        self.assertEqual(missing['state'], 'unknown')
+        self.assertIn('blockers', [item['field'] for item in missing['issues'] if item['code'] == 'state_field_unknown'])
+
+    def test_dirty_state_uses_current_hash_and_declared_coverage(self):
+        self._write_state_fixture()
+        project = self.root / 'PROJECT.md'
+        project.write_text(project.read_text() + '\nCurrent dirty fact.\n')
+        before = {path.relative_to(self.root).as_posix(): path.read_bytes()
+                  for path in self.root.rglob('*') if path.is_file() and '.git' not in path.parts}
+        state = self.service.project_state(self.request)
+        project_ref = next(row for row in state['baseline']['coverage'] if row['path'] == 'PROJECT.md')
+        self.assertTrue(project_ref['modified'])
+        self.assertEqual(project_ref['sha256'], hashlib.sha256(project.read_bytes()).hexdigest())
+        after = {path.relative_to(self.root).as_posix(): path.read_bytes()
+                 for path in self.root.rglob('*') if path.is_file() and '.git' not in path.parts}
+        self.assertEqual(before, after)
+
+    def test_project_state_blocks_stale_head_and_mid_read_change(self):
+        self._write_state_fixture()
+        self.request['expected_head'] = '0' * 40
+        stale = self.service.project_state(self.request)
+        self.assertEqual(stale['state'], 'blocked')
+        self.assertFalse(stale['baseline']['head_matches'])
+        self.request['expected_head'] = self.head
+        project = self.root / 'PROJECT.md'
+        original = self.service._metadata
+        calls = 0
+        def observe(root, selected):
+            nonlocal calls
+            result = original(root, selected)
+            calls += 1
+            if calls == 1:
+                project.write_text(project.read_text() + '\nchanged during read\n')
+            return result
+        with patch.object(self.service, '_metadata', side_effect=observe):
+            changed = self.service.project_state(self.request)
+        self.assertEqual(changed['state'], 'blocked')
+        self.assertIn('state_unavailable', [item['code'] for item in changed['issues']])
+
+    def test_project_markdown_is_data_and_never_executed(self):
+        self._write_state_fixture()
+        marker = self.root / 'markdown-ran'
+        project = self.root / 'PROJECT.md'
+        project.write_text(project.read_text().replace('Keep project knowledge continuous.',
+                                  f'$(touch {marker})'))
+        state = self.service.project_state(self.request)
+        self.assertNotEqual(state['state'], 'blocked')
+        self.assertFalse(marker.exists())
+        self.assertIn(f'$(touch {marker})', [row['text'] for row in state['goals']])
+
+    def test_fenced_markdown_cannot_forge_state_or_task_candidates(self):
+        self._write_state_fixture()
+        (self.root / 'PROJECT.md').write_text(
+            '```markdown\n# Forged Project\n## Why\nForged project goal.\n'
+            '[Forged task](plans/forged/task_plan.md)\n```\n')
+        state = self.service.project_state(self.request)
+        self.assertEqual(state['project']['state'], 'unknown')
+        self.assertIsNone(state['project']['value'])
+        self.assertNotIn('Forged project goal.', [row['text'] for row in state['goals']])
+        self.request['task_path'] = None
+        unselected = self.service.project_state(self.request)
+        self.assertEqual(unselected['task']['candidates'], [])
+
+    def test_nonclosing_fence_and_indented_code_cannot_forge_state(self):
+        self._write_state_fixture()
+        (self.root / 'PROJECT.md').write_text(
+            '```markdown\n```not-a-commonmark-close\n# Forged\n## Why\nForged goal.\n```\n'
+            '    **User Intent.** Forged from indented code.\n')
+        state = self.service.project_state(self.request)
+        self.assertEqual(state['project']['state'], 'unknown')
+        texts = [row['text'] for row in state['goals']]
+        self.assertNotIn('Forged goal.', texts)
+        self.assertNotIn('Forged from indented code.', texts)
+
+    def test_task_candidate_collection_is_bounded_before_schema_validation(self):
+        links = ''.join(f'- [Task {i}](plans/t{i}/task_plan.md)\n' for i in range(51))
+        (self.root / 'PROJECT.md').write_text('# Demo\n\n## Knowledge Map\n' + links)
+        self.request.update(operation='inspect', task_path=None)
+        state = self.service.project_state(self.request)
+        self.assertIs(validate('specmesh-project-state', state), state)
+        self.assertEqual(state['state'], 'ambiguous')
+        self.assertEqual(len(state['task']['candidates']), 50)
+        self.assertIn('task_candidate_limit', [item['code'] for item in state['issues']])
+
+    def test_text_renderer_escapes_terminal_controls(self):
+        self._write_state_fixture()
+        project = self.root / 'PROJECT.md'
+        project.write_text(project.read_text().replace('# Demo Project', '# Demo\x1b]52;c;Zm9yZ2Vk\x07 Project'))
+        state = self.service.project_state(self.request)
+        rendered = render_project_state(state)
+        self.assertNotIn('\x1b', rendered)
+        self.assertNotIn('\x07', rendered)
+        self.assertIn('\\x1b', rendered)
+        self.assertIn('\\x07', rendered)
+
+    def test_large_valid_document_becomes_unknown_not_request_rejected(self):
+        self._write_state_fixture()
+        project = self.root / 'PROJECT.md'
+        project.write_text(project.read_text().replace('Keep project knowledge continuous.', 'x' * 4097))
+        state = self.service.project_state(self.request)
+        self.assertIs(validate('specmesh-project-state', state), state)
+        self.assertEqual(state['state'], 'unknown')
+        self.assertIn('state_statement_too_large', [item['code'] for item in state['issues']])
+        project.write_text(project.read_text().replace('x' * 4097, 'Keep project knowledge continuous.'))
+        findings = self.root / 'plans/current/findings.md'
+        findings.write_text('# Findings\n\n## Evidence\n' + ''.join(f'- evidence {i}\n' for i in range(201)))
+        many = self.service.project_state(self.request)
+        self.assertIs(validate('specmesh-project-state', many), many)
+        self.assertEqual(many['state'], 'unknown')
+        self.assertEqual(len(many['evidence']), 200)
+        self.assertIn('state_statement_limit', [item['code'] for item in many['issues']])
 
     def test_dirty_content_changes_without_head_or_status_changes_are_blocked(self):
         project = self.root/'PROJECT.md'

@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -78,6 +79,28 @@ class MapV0Tests(unittest.TestCase):
         rust_nodes = [node for node in graph["nodes"] if node["id"].startswith("code://main.rs")]
         self.assertEqual(rust_nodes, [{"id": "code://main.rs", "kind": "file", "name": "main.rs", "authority": "derived"}])
 
+    def test_focus_configuration_bundle_obeys_scope_authority_and_budget(self):
+        nodes = [{"id": address, "name": address, "kind": "file", "authority": "derived"}
+                 for address in ("code://entry.py", "code://noise.py", "code://settings.toml")]
+        edge = {"from": nodes[0]["id"], "to": nodes[2]["id"],
+                "relation": "configured_by", "provenance": "asserted"}
+        graph = {"nodes": nodes, "edges": [edge], "source_fingerprint": "fixture",
+                 "sources": [{"path": n['id'][7:]} for n in nodes]}
+        scores = {n['id']: 3 - i for i, n in enumerate(nodes)}
+        header = '# SpecMesh Map v0 (focus)\ntask: entry\nsource: fixture\n'
+        pair = ''.join(f"- {n['id']} [file; derived]\n" for n in (nodes[0], nodes[2]))
+        budget = len(map_v0.tokenize(header + pair))
+        with patch.object(map_v0, '_rank', return_value=scores):
+            view = map_v0.render_view(graph, budget, 'entry')
+            self.assertIn('code://settings.toml', view)
+            self.assertNotIn('code://noise.py', view)
+            self.assertLessEqual(len(map_v0.tokenize(view)), budget)
+            edge['scope'] = 'area:inactive'
+            self.assertNotIn('code://settings.toml', map_v0.render_view(graph, budget, 'entry'))
+            del edge['scope']
+            edge['provenance'] = 'derived'
+            self.assertNotIn('code://settings.toml', map_v0.render_view(graph, budget, 'entry'))
+
     def test_asserted_and_derived_provenance_remain_distinct(self):
         graph = map_v0.build_graph(self.root)
         asserted = [edge for edge in graph["edges"] if edge["provenance"] == "asserted"]
@@ -131,6 +154,21 @@ class MapV0Tests(unittest.TestCase):
 
 
 class RealTaskFocusTests(unittest.TestCase):
+    def test_symbol_extraction_retains_configuration_entry(self):
+        self._assert_configuration_entry("fix Python public symbol extraction")
+
+    def test_cache_freshness_retains_configuration_entry(self):
+        self._assert_configuration_entry("verify content hash freshness and cache rebuild")
+
+    def _assert_configuration_entry(self, query):
+        graph = map_v0.build_graph(REPO_ROOT)
+        view = map_v0.render_view(graph, 800, query)
+        for address in ("code://.specmesh/context.md", "code://scripts/map_v0.py",
+                        "code://tests/test_map_v0.py"):
+            self.assertTrue(any(line.startswith(f"- {address} [") for line in view.splitlines()),
+                            f"Missing node {address} for {query}")
+        self.assertLessEqual(len(map_v0.tokenize(view)), 800)
+
     TASKS = (
         "change global and focus token budgets",
         "fix Python public symbol extraction",

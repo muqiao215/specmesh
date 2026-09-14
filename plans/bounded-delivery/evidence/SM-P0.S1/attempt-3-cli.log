@@ -1,0 +1,261 @@
+$ scripts/map_v0.py build 
+exit= 0 
+built .specmesh/cache/repo-map.json fingerprint=7e8ce49683e343e5d5c96a92fb24ddc212555555aebc443026516088475ebf7a nodes=105 edges=90
+
+$ scripts/map_v0.py build 
+exit= 0 
+built .specmesh/cache/repo-map.json fingerprint=7e8ce49683e343e5d5c96a92fb24ddc212555555aebc443026516088475ebf7a nodes=105 edges=90
+
+byte_identical True cache_sha256 0a131270a6313de6910a866127e633c5d5b0cc7b77cffee4b6a92fa5a8aa5ecb
+$ scripts/map_v0.py check 
+exit= 0 
+fresh
+
+$ scripts/map_v0.py areas 
+exit= 0 
+area:map-derivation [current]
+  code://scripts/map_v0.py -> ok
+  code://scripts/map_v0.py#build_graph -> ok
+  code://tests/test_map_v0.py -> ok
+area:memory-authority [current]
+  code://.specmesh/memory/core.md -> ok
+  code://.specmesh/context.md -> ok
+
+$ scripts/map_v0.py focus fix Python public symbol extraction 
+exit= 0 
+# SpecMesh Map v0 (focus)
+task: fix Python public symbol extraction
+source: 7e8ce49683e343e5d5c96a92fb24ddc212555555aebc443026516088475ebf7a
+- code://scripts/map_v0.py [file; derived]
+- code://specmesh_port/service.py [file; derived]
+- code://specmesh_port/project_state.py [file; derived]
+- code://specmesh_port/snapshot.py [file; derived]
+- code://tests/test_machine_port.py [file; derived]
+- code://tests/test_map_v0.py [file; derived]
+- code://specmesh_port/__main__.py [file; derived]
+- code://tests/test_area_overlay.py [file; derived]
+- code://specmesh_port/contracts_runtime.py [file; derived]
+- spec://map-v0 [spec; asserted]
+- code://.specmesh/context.md [file; derived]
+- code://specmesh_port/contracts_runtime.py#validate [symbol; derived]
+- code://scripts/map_v0.py#build_graph [symbol; derived]
+- code://scripts/map_v0.py#canonical_json [symbol; derived]
+- code://scripts/map_v0.py#render_view [symbol; derived]
+- code://scripts/map_v0.py#tokenize [symbol; derived]
+- code://scripts/map_v0.py#write_cache [symbol; derived]
+- code://specmesh_port/snapshot.py#DocumentSnapshot [symbol; derived]
+- code://specmesh_port/project_state.py#render_project_state [symbol; derived]
+- code://specmesh_port/service.py#SpecMeshService [symbol; derived]
+- code://specmesh_port/git_reader.py#read_git [symbol; derived]
+- code://scripts/map_v0.py#normalize_area_id [symbol; derived]
+- code://scripts/map_v0.py#cache_is_fresh [symbol; derived]
+- code://specmesh_port/git_reader.py [file; derived]
+- code://specmesh_port/project_state.py#MarkdownStateSource [symbol; derived]
+- code://specmesh_port/project_state.py#build_project_state [symbol; derived]
+- code://scripts/map_v0.py#cache_path [symbol; derived]
+- code://scripts/map_v0.py#file_sha256 [symbol; derived]
+- code://scripts/map_v0.py#load_areas [symbol; derived]
+- code://scripts/map_v0.py#load_cache [symbol; derived]
+- code://scripts/map_v0.py#main [symbol; derived]
+- code://scripts/map_v0.py#manifest_fingerprint [symbol; derived]
+- code://scripts/map_v0.py#parse_areas [symbol; derived]
+- code://scripts/map_v0.py#participating_files [symbol; derived]
+- code://scripts/map_v0.py#read_context [symbol; derived]
+- code://scripts/map_v0.py#resolve_areas [symbol; derived]
+- code://scripts/map_v0.py#sha256_bytes [symbol; derived]
+- code://scripts/map_v0.py#source_manifest [symbol; derived]
+- code://specmesh_port/snapshot.py#DocumentSnapshot.directory [symbol; derived]
+- code://specmesh_port/snapshot.py#DocumentSnapshot.read [symbol; derived]
+- code://specmesh_port/snapshot.py#DocumentSnapshot.verify [symbol; derived]
+- code://specmesh_port/snapshot.py#Observation [symbol; derived]
+- code://specmesh_port/snapshot.py#identity [symbol; derived]
+- code://specmesh_port/project_state.py#MarkdownSection [symbol; derived]
+- code://specmesh_port/project_state.py#MarkdownStateSource.has_section [symbol; derived]
+- code://specmesh_port/project_state.py#MarkdownStateSource.linked_task_candidates [symbol; derived]
+- code://SPEC.md [file; derived]
+tokens_v0=797
+
+$ scripts/map_v0.py focus verify content hash freshness and cache rebuild 
+exit= 0 
+# SpecMesh Map v0 (focus)
+task: verify content hash freshness and cache rebuild
+source: 7e8ce49683e343e5d5c96a92fb24ddc212555555aebc443026516088475ebf7a
+- code://scripts/map_v0.py [file; derived]
+- code://specmesh_port/project_state.py [file; derived]
+- code://specmesh_port/service.py [file; derived]
+- code://specmesh_port/snapshot.py [file; derived]
+- code://tests/test_map_v0.py [file; derived]
+- code://tests/test_area_overlay.py [file; derived]
+- code://tests/test_machine_port.py [file; derived]
+- spec://map-v0 [spec; asserted]
+- code://.specmesh/context.md [file; derived]
+- code://scripts/map_v0.py#write_cache [symbol; derived]
+- code://scripts/map_v0.py#cache_is_fresh [symbol; derived]
+- code://specmesh_port/__main__.py [file; derived]
+- code://specmesh_port/contracts_runtime.py [file; derived]
+- code://scripts/map_v0.py#cache_path [symbol; derived]
+- code://scripts/map_v0.py#load_cache [symbol; derived]
+- code://scripts/map_v0.py#build_graph [symbol; derived]
+- code://scripts/map_v0.py#canonical_json [symbol; derived]
+- code://scripts/map_v0.py#render_view [symbol; derived]
+- code://scripts/map_v0.py#tokenize [symbol; derived]
+- code://specmesh_port/snapshot.py#DocumentSnapshot.verify [symbol; derived]
+- code://specmesh_port/project_state.py#MarkdownStateSource.linked_task_candidates [symbol; derived]
+- code://specmesh_port/contracts_runtime.py#validate [symbol; derived]
+- code://scripts/map_v0.py#normalize_area_id [symbol; derived]
+- code://specmesh_port/snapshot.py#DocumentSnapshot [symbol; derived]
+- code://specmesh_port/project_state.py#render_project_state [symbol; derived]
+- code://specmesh_port/service.py#SpecMeshService [symbol; derived]
+- code://specmesh_port/git_reader.py [file; derived]
+- code://specmesh_port/git_reader.py#read_git [symbol; derived]
+- code://specmesh_port/project_state.py#MarkdownStateSource [symbol; derived]
+- code://specmesh_port/project_state.py#build_project_state [symbol; derived]
+- code://scripts/map_v0.py#file_sha256 [symbol; derived]
+- code://scripts/map_v0.py#load_areas [symbol; derived]
+- code://scripts/map_v0.py#main [symbol; derived]
+- code://scripts/map_v0.py#manifest_fingerprint [symbol; derived]
+- code://scripts/map_v0.py#parse_areas [symbol; derived]
+- code://scripts/map_v0.py#participating_files [symbol; derived]
+- code://scripts/map_v0.py#read_context [symbol; derived]
+- code://scripts/map_v0.py#resolve_areas [symbol; derived]
+- code://scripts/map_v0.py#sha256_bytes [symbol; derived]
+- code://scripts/map_v0.py#source_manifest [symbol; derived]
+- code://specmesh_port/snapshot.py#DocumentSnapshot.directory [symbol; derived]
+- code://specmesh_port/snapshot.py#DocumentSnapshot.read [symbol; derived]
+- mem://core [mem; asserted]
+## areas
+- area:map-derivation [current] purpose: Derive the repo map from sources with deterministic ranking and hard budgets.
+  anchors: code://scripts/map_v0.py, code://scripts/map_v0.py#build_graph, code://tests/test_map_v0.py
+  read_next: .specmesh/context.md, SPEC.md
+tokens_v0=799
+
+$ scripts/map_v0.py global 
+exit= 0 
+# SpecMesh Map v0 (global)
+source: 7e8ce49683e343e5d5c96a92fb24ddc212555555aebc443026516088475ebf7a
+- code://scripts/map_v0.py [file; derived]
+- code://specmesh_port/service.py [file; derived]
+- code://specmesh_port/project_state.py [file; derived]
+- code://specmesh_port/snapshot.py [file; derived]
+- code://tests/test_machine_port.py [file; derived]
+- code://tests/test_map_v0.py [file; derived]
+- code://specmesh_port/__main__.py [file; derived]
+- spec://map-v0 [spec; asserted]
+- code://tests/test_area_overlay.py [file; derived]
+- code://specmesh_port/contracts_runtime.py [file; derived]
+- code://specmesh_port/contracts_runtime.py#validate [symbol; derived]
+- code://scripts/map_v0.py#build_graph [symbol; derived]
+- code://scripts/map_v0.py#canonical_json [symbol; derived]
+- code://scripts/map_v0.py#render_view [symbol; derived]
+- code://scripts/map_v0.py#tokenize [symbol; derived]
+- code://scripts/map_v0.py#write_cache [symbol; derived]
+- code://specmesh_port/snapshot.py#DocumentSnapshot [symbol; derived]
+- code://specmesh_port/project_state.py#render_project_state [symbol; derived]
+- code://specmesh_port/git_reader.py [file; derived]
+- code://specmesh_port/git_reader.py#read_git [symbol; derived]
+- code://specmesh_port/service.py#SpecMeshService [symbol; derived]
+- code://scripts/map_v0.py#cache_is_fresh [symbol; derived]
+- code://scripts/map_v0.py#normalize_area_id [symbol; derived]
+- code://specmesh_port/project_state.py#MarkdownStateSource [symbol; derived]
+- code://specmesh_port/project_state.py#build_project_state [symbol; derived]
+- code://.specmesh/context.md [file; derived]
+- code://SPEC.md [file; derived]
+- mem://core [mem; asserted]
+- code://scripts/map_v0.py#cache_path [symbol; derived]
+- code://scripts/map_v0.py#file_sha256 [symbol; derived]
+- code://scripts/map_v0.py#load_areas [symbol; derived]
+- code://scripts/map_v0.py#load_cache [symbol; derived]
+- code://scripts/map_v0.py#main [symbol; derived]
+- code://scripts/map_v0.py#manifest_fingerprint [symbol; derived]
+- code://scripts/map_v0.py#parse_areas [symbol; derived]
+- code://scripts/map_v0.py#participating_files [symbol; derived]
+- code://scripts/map_v0.py#read_context [symbol; derived]
+- code://scripts/map_v0.py#resolve_areas [symbol; derived]
+- code://scripts/map_v0.py#sha256_bytes [symbol; derived]
+- code://scripts/map_v0.py#source_manifest [symbol; derived]
+- code://specmesh_port/snapshot.py#DocumentSnapshot.directory [symbol; derived]
+- code://specmesh_port/snapshot.py#DocumentSnapshot.read [symbol; derived]
+- code://specmesh_port/snapshot.py#DocumentSnapshot.verify [symbol; derived]
+- code://specmesh_port/snapshot.py#Observation [symbol; derived]
+- code://specmesh_port/snapshot.py#identity [symbol; derived]
+- code://specmesh_port/project_state.py#MarkdownSection [symbol; derived]
+- code://specmesh_port/project_state.py#MarkdownStateSource.has_section [symbol; derived]
+- code://specmesh_port/project_state.py#MarkdownStateSource.linked_task_candidates [symbol; derived]
+- code://specmesh_port/project_state.py#MarkdownStateSource.source [symbol; derived]
+- code://specmesh_port/project_state.py#MarkdownStateSource.statements [symbol; derived]
+- code://specmesh_port/project_state.py#MarkdownStateSource.title_statement [symbol; derived]
+- code://specmesh_port/contracts_runtime.py#ValidationError [symbol; derived]
+- code://specmesh_port/contracts_runtime.py#load_schema [symbol; derived]
+- code://specmesh_port/__main__.py#main [symbol; derived]
+- code://specmesh_port/service.py#SpecMeshService.check [symbol; derived]
+- code://specmesh_port/service.py#SpecMeshService.project_state [symbol; derived]
+- code://specmesh_port/service.py#SpecMeshService.propose_update [symbol; derived]
+- code://.github/workflows/tests.yml [file; derived]
+- code://.gitignore [file; derived]
+- code://.specmesh/memory/core.md [file; derived]
+- code://.specmesh/repo-areas.v0.yaml [file; derived]
+- code://AGENTS.md [file; derived]
+- code://CLAUDE.md [file; derived]
+- code://LICENSE [file; derived]
+## areas
+- area:map-derivation [current] purpose: Derive the repo map from sources with deterministic ranking and hard budgets.
+  anchors: code://scripts/map_v0.py, code://scripts/map_v0.py#build_graph, code://tests/test_map_v0.py
+  read_next: .specmesh/context.md, SPEC.md
+- area:memory-authority [current] purpose: Assert reviewed memory relations binding spec identity to code anchors.
+  anchors: code://.specmesh/memory/core.md, code://.specmesh/context.md
+  read_next: SPEC.md
+tokens_v0=1195
+
+state CLI json exit= 3 
+{"schema_version": "specmesh.project-state.v1", "state": "ambiguous", "project": {"state": "known", "value": "Demo Project", "sources": [{"path": "PROJECT.md", "line_start": 1, "line_end": 1, "sha256": "0bebc0a0f2f7c9c1cb70fb27d5bb886d7f0f45bf5ee94d439a99a45a622e55f3"}]}, "task": {"state": "selected", "path": "plans/current", "value": "Deliver project state", "candidates": [], "sources": [{"path": "plans/current/task_plan.md", "line_start": 1, "line_end": 1, "sha256": "4c7c22bdcb5b73cf810c2bfe2fc700f01d5663fc7e994cca2d16c9e836777c5f"}]}, "goals": [{"text": "Keep project knowledge continuous.", "authority": "asserted_candidate", "source": {"path": "PROJECT.md", "line_start": 4, "line_end": 4, "sha256": "0bebc0a0f2f7c9c1cb70fb27d5bb886d7f0f45bf5ee94d439a99a45a622e55f3"}}, {"text": "Ship a standalone state reader.", "authority": "asserted_candidate", "source": {"path": "PROJECT.md", "line_start": 7, "line_end": 7, "sha256": "0bebc0a0f2f7c9c1cb70fb27d5bb886d7f0f45bf5ee94d439a99a45a622e55f3"}}, {"text": "Expose sourced state.", "authority": "asserted_candidate", "source": {"path": "plans/current/task_plan.md", "line_start": 4, "line_end": 4, "sha256": "4c7c22bdcb5b73cf810c2bfe2fc700f01d5663fc7e994cca2d16c9e836777c5f"}}], "constraints": [{"text": "- Stay offline.", "authority": "asserted_candidate", "source": {"path": "PROJECT.md", "line_start": 10, "line_end": 10, "sha256": "0bebc0a0f2f7c9c1cb70fb27d5bb886d7f0f45bf5ee94d439a99a45a622e55f3"}}, {"text": "- Preserve legacy output.", "authority": "asserted_candidate", "source": {"path": "plans/current/task_plan.md", "line_start": 7, "line_end": 7, "sha256": "4c7c22bdcb5b73cf810c2bfe2fc700f01d5663fc7e994cca2d16c9e836777c5f"}}], "success_criteria": [{"text": "JSON validates.", "authority": "asserted_candidate", "source": {"path": "plans/current/task_plan.md", "line_start": 10, "line_end": 10, "sha256": "4c7c22bdcb5b73cf810c2bfe2fc700f01d5663fc7e994cca2d16c9e836777c5f"}}], "blockers": [], "declared_status": [{"text": "done", "authority": "asserted_candidate", "source": {"path": "plans/current/task_plan.md", "line_start": 13, "line_end": 13, "sha256": "4c7c22bdcb5b73cf810c2bfe2fc700f01d5663fc7e994cca2d16c9e836777c5f"}}, {"text": "in progress", "authority": "asserted_candidate", "source": {"path": "plans/current/progress.md", "line_start": 4, "line_end": 4, "sha256": "d1537b6d3d05bac7169a41f297dc6462684a34d534aae7b25274c1d4e6efc050"}}], "evidence": [{"text": "- Baseline behavior recorded.", "authority": "asserted_candidate", "source": {"path": "plans/current/findings.md", "line_start": 4, "line_end": 4, "sha256": "50723bf53941cb5a2117dc9eb4ca92052f15b023da7c4cea29e3f9b30fb0e382"}}], "history": [{"text": "- Fixture prepared.", "authority": "asserted_candidate", "source": {"path": "plans/current/progress.md", "line_start": 7, "line_end": 7, "sha256": "d1537b6d3d05bac7169a41f297dc6462684a34d534aae7b25274c1d4e6efc050"}}], "next_steps": [{"text": "Implement the state reader.", "authority": "asserted_candidate", "source": {"path": "plans/current/progress.md", "line_start": 12, "line_end": 12, "sha256": "d1537b6d3d05bac7169a41f297dc6462684a34d534aae7b25274c1d4e6efc050"}}], "baseline": {"observed_head": "74bfa802d693d56db5a16fa5ced1e1c995011a0d", "expected_head": "74bfa802d693d56db5a16fa5ced1e1c995011a0d", "head_matches": true, "coverage": [{"path": "AGENTS.md", "sha256": "7e98df7437f1b50bc0ea2ba7180f28bdb7a043cd2c6045e1783124cdba2fdcc5", "tracked": true, "modified": false}, {"path": "PROJECT.md", "sha256": "0bebc0a0f2f7c9c1cb70fb27d5bb886d7f0f45bf5ee94d439a99a45a622e55f3", "tracked": true, "modified": false}, {"path": "plans/current/task_plan.md", "sha256": "4c7c22bdcb5b73cf810c2bfe2fc700f01d5663fc7e994cca2d16c9e836777c5f", "tracked": true, "modified": true}, {"path": "plans/current/findings.md", "sha256": "50723bf53941cb5a2117dc9eb4ca92052f15b023da7c4cea29e3f9b30fb0e382", "tracked": true, "modified": false}, {"path": "plans/current/progress.md", "sha256": "d1537b6d3d05bac7169a41f297dc6462684a34d534aae7b25274c1d4e6efc050", "tracked": true, "modified": false}]}, "issues": [{"code": "uncommitted_project_fact", "severity": "warning", "field": "plans/current/task_plan.md", "message": "Working bytes or index differ from HEAD; this observation covers the current bytes only."}, {"code": "declared_status_conflict", "severity": "warning", "field": "declared_status", "message": "Conflicting current declarations or completion with failed/unknown blockers; no completion is inferred. Current classes: done, in_progress"}]}
+
+state CLI text exit= 3 
+# SpecMesh project state v1
+state: ambiguous
+observed_head: 74bfa802d693d56db5a16fa5ced1e1c995011a0d
+expected_head: 74bfa802d693d56db5a16fa5ced1e1c995011a0d
+head_matches: true
+project: Demo Project [known; PROJECT.md:1; sha256:0bebc0a0f2f7c9c1cb70fb27d5bb886d7f0f45bf5ee94d439a99a45a622e55f3]
+task: Deliver project state [selected; plans/current/task_plan.md:1; sha256:4c7c22bdcb5b73cf810c2bfe2fc700f01d5663fc7e994cca2d16c9e836777c5f]
+task_path: plans/current
+
+## Goals
+- Keep project knowledge continuous. (authority:asserted_candidate; PROJECT.md:4; sha256:0bebc0a0f2f7c9c1cb70fb27d5bb886d7f0f45bf5ee94d439a99a45a622e55f3)
+- Ship a standalone state reader. (authority:asserted_candidate; PROJECT.md:7; sha256:0bebc0a0f2f7c9c1cb70fb27d5bb886d7f0f45bf5ee94d439a99a45a622e55f3)
+- Expose sourced state. (authority:asserted_candidate; plans/current/task_plan.md:4; sha256:4c7c22bdcb5b73cf810c2bfe2fc700f01d5663fc7e994cca2d16c9e836777c5f)
+
+## Constraints
+- - Stay offline. (authority:asserted_candidate; PROJECT.md:10; sha256:0bebc0a0f2f7c9c1cb70fb27d5bb886d7f0f45bf5ee94d439a99a45a622e55f3)
+- - Preserve legacy output. (authority:asserted_candidate; plans/current/task_plan.md:7; sha256:4c7c22bdcb5b73cf810c2bfe2fc700f01d5663fc7e994cca2d16c9e836777c5f)
+
+## Success criteria
+- JSON validates. (authority:asserted_candidate; plans/current/task_plan.md:10; sha256:4c7c22bdcb5b73cf810c2bfe2fc700f01d5663fc7e994cca2d16c9e836777c5f)
+
+## Blockers
+- unknown
+
+## Declared status
+- done (authority:asserted_candidate; plans/current/task_plan.md:13; sha256:4c7c22bdcb5b73cf810c2bfe2fc700f01d5663fc7e994cca2d16c9e836777c5f)
+- in progress (authority:asserted_candidate; plans/current/progress.md:4; sha256:d1537b6d3d05bac7169a41f297dc6462684a34d534aae7b25274c1d4e6efc050)
+
+## Evidence
+- - Baseline behavior recorded. (authority:asserted_candidate; plans/current/findings.md:4; sha256:50723bf53941cb5a2117dc9eb4ca92052f15b023da7c4cea29e3f9b30fb0e382)
+
+## History
+- - Fixture prepared. (authority:asserted_candidate; plans/current/progress.md:7; sha256:d1537b6d3d05bac7169a41f297dc6462684a34d534aae7b25274c1d4e6efc050)
+
+## Next steps
+- Implement the state reader. (authority:asserted_candidate; plans/current/progress.md:12; sha256:d1537b6d3d05bac7169a41f297dc6462684a34d534aae7b25274c1d4e6efc050)
+
+## Coverage
+- AGENTS.md sha256:7e98df7437f1b50bc0ea2ba7180f28bdb7a043cd2c6045e1783124cdba2fdcc5 tracked:true modified:false
+- PROJECT.md sha256:0bebc0a0f2f7c9c1cb70fb27d5bb886d7f0f45bf5ee94d439a99a45a622e55f3 tracked:true modified:false
+- plans/current/task_plan.md sha256:4c7c22bdcb5b73cf810c2bfe2fc700f01d5663fc7e994cca2d16c9e836777c5f tracked:true modified:true
+- plans/current/findings.md sha256:50723bf53941cb5a2117dc9eb4ca92052f15b023da7c4cea29e3f9b30fb0e382 tracked:true modified:false
+- plans/current/progress.md sha256:d1537b6d3d05bac7169a41f297dc6462684a34d534aae7b25274c1d4e6efc050 tracked:true modified:false
+
+## Issues
+- warning uncommitted_project_fact [plans/current/task_plan.md]: Working bytes or index differ from HEAD; this observation covers the current bytes only.
+- warning declared_status_conflict [declared_status]: Conflicting current declarations or completion with failed/unknown blockers; no completion is inferred. Current classes: done, in_progress
+
+state CLI conflict and JSON/text source parity PASS

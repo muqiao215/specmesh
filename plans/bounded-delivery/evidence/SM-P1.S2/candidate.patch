@@ -1,0 +1,305 @@
+diff --git a/docs/CODEKIT-INTEGRATION.md b/docs/CODEKIT-INTEGRATION.md
+index 5660b33..1a422e2 100644
+--- a/docs/CODEKIT-INTEGRATION.md
++++ b/docs/CODEKIT-INTEGRATION.md
+@@ -5,6 +5,11 @@ SpecMesh's normative file convention remains `SPEC.md`. This optional Python 3.1
+ ```sh
+ python3 -B -m specmesh_port --capabilities
+ python3 -B -m specmesh_port --allowed-root /absolute/project < request.json
++python3 -B -m specmesh_port --allowed-root /absolute/project --project-state json < request.json
++python3 -B -m specmesh_port --allowed-root /absolute/project --project-state text < request.json
++python3 -B -m specmesh_port --allowed-root /absolute/project --handoff json < request.json
++python3 -B -m specmesh_port --allowed-root /absolute/project --handoff text < request.json
++python3 -B -m specmesh_port --allowed-root /absolute/project --verify-handoff handoff.json
+ ```
+ 
+ Example request (substitute the full current Git SHA):
+@@ -15,6 +20,58 @@ Example request (substitute the full current Git SHA):
+ 
+ The zero SHA intentionally fails freshness checks; obtain the actual HEAD first. The standalone command validates a bounded request and returns JSON. The request CLI supports inspect, check, prepare_handoff and verify_closeout. The separate Python `SpecMeshService.propose_update` method generates a proposal only; it never applies it. CM currently exposes the read-only subset through its own optional adapter.
+ 
++`--project-state json|text` is an explicit, additive state-reading view for `inspect` or
++`check` requests. Both forms render the same `specmesh.project-state.v1` model; the JSON
++form validates against `specmesh-project-state.schema.json`. Omitting the option preserves
++the original request/result contract and exit behavior. State exit code is 0 only for a
++stable `observed` model and 3 for `unknown`, `ambiguous`, or `blocked`.
++
++The state model reports project/task identity, goals, constraints, task completion criteria,
++blockers, declared status, evidence references, the unique next step, full observed HEAD, and
++the exact selected-file coverage. Every extracted statement carries its relative source path,
++line, source SHA-256, and `asserted_candidate` authority. Coverage carries current SHA-256 plus
++tracked/modified observations. `observed` means these inputs were read and revalidated; it does
++not mean the task is complete, externally accepted, or the whole worktree is clean.
++
++`Done` entries are retained in a separate history field and do not satisfy evidence or participate
++in current-status classification. Human text visibly escapes C0/C1 terminal controls and includes
++the same identity sources and statement authority as JSON. Statement and candidate collections are
++bounded before schema validation; excess content yields an explicit non-success state rather than
++being misreported as an invalid caller request.
++
++Extraction is deliberately finite. It recognizes H1 identity; common SpecMesh H2/H3 sections
++such as Why, User Intent, Goal, Context, Constraints, Requirements, Non-goals, Success, Status,
++Current, Done, Issues, Evidence, Next and Next Step; plus the bounded-delivery labels 可观察行为、
++允许写范围、权限、预算与停止 and 冻结验收清单. Markdown table rows in a selected acceptance
++section remain source statements, while its header/separator are omitted. Unsupported or missing
++formats produce `unknown`; multiple linked task candidates produce `ambiguous`. A linked task is
++never auto-selected: callers must pass `task_path`. Multiple normalized current-status classes
++produce `declared_status_conflict`; aliases within one class do not. Completion coexisting with
++failure/unknown blockers also remains a conflict. Repository Markdown is data only and no command
++found in it is executed. The third authorized repair detects `done` plus `in progress` as
++`ambiguous`, preserving both source declarations and the existing public enum. Its targeted
++verification and subsequent independent S1-A–F acceptance pass for the recorded candidate;
++see [acceptance evidence](../plans/bounded-delivery/evidence/SM-P0.S1/acceptance.md).
++This is local S1 acceptance, not release verification or completion of S2/S3/R1.
++
++`--handoff json|text` is an additive handoff-generation view for `prepare_handoff`, `inspect`,
++or `check` requests. Both forms render the `specmesh.handoff.v1` model; the JSON form validates
++against `specmesh-handoff.schema.json`. Omitting the option preserves the legacy request/result
++contract. CLI exit code is 0 only when `executable` is true (state `ready`) and 3 for non-executable
++states (`rejected`, `stale`, `cancelled`, `blocked`, `unknown`).
++
++The handoff material bundles project/task identity, goals, constraints, decisions, work summary
++(completed, failed, unknown), remaining work, the sole next step, observed baseline HEAD, deterministic
++scope fingerprint, explicit dirty coverage (staged, unstaged, staged_and_unstaged, untracked), and
++evidence bindings. Staged, unstaged, and untracked file entries record their SHA-256 and locator URI,
++retaining inline UTF-8 content or patches within document bounds. A new worktree or downstream consumer
++cannot assume dirty contents exist automatically: `--verify-handoff <file>` (or `-` via stdin) and
++Python `SpecMeshService.verify_handoff(handoff, repo_root)` enforce pre-consumption verification.
++The gate rejects execution (returning `executable: false` and exit 3) if the target repository has a
++stale HEAD, content modified at the same HEAD, missing dirty files, hash mismatches, failed evidence,
++or if the task was declared cancelled. Handoff material is a structured continuity report, not an
++automatic execution grant or daemon scheduler.
++
+ The capability descriptor declares `specmesh.snapshot.v1`, read-only operation, content/Git revalidation and required external closeout verification. It requires no project access. A host must validate both descriptor and request/result contracts; `unknown` is not a passed gate. CLI exit codes are 0 for pass, 3 for blocked/unknown, and 2 for invalid input or invocation.
+ 
+ The service anchors the repository directory and selected files with descriptors. Discovery and hashing reuse the same observed bytes. Before returning, it rechecks full HEAD, selected index/tree entries, file identity/content, selected task directories and missing optional documents. Edits with unchanged HEAD, same-byte atomic replacement, changed symlinks and newly appearing documents invalidate the observation. Internal symlinks are supported; path traversal, external symlinks and non-regular files are rejected. This is a bounded observation, not a filesystem transaction or lasting authorization; a consumer must revalidate freshness when using it.
+diff --git a/specmesh_port/__main__.py b/specmesh_port/__main__.py
+index db11530..7da2cfa 100644
+--- a/specmesh_port/__main__.py
++++ b/specmesh_port/__main__.py
+@@ -2,14 +2,20 @@ import argparse
+ import json
+ import os
+ import sys
++from pathlib import Path
+ from .service import SpecMeshService
+ from .contracts_runtime import validate
++from .project_state import render_project_state
++from .handoff import render_handoff
+ 
+ 
+ def main(argv=None):
+     parser=argparse.ArgumentParser(description="Independent, read-only SpecMesh machine-profile proposal")
+     parser.add_argument("--allowed-root",action="append")
+     parser.add_argument("--capabilities",action="store_true")
++    parser.add_argument("--project-state",choices=("json", "text"))
++    parser.add_argument("--handoff",choices=("json", "text"))
++    parser.add_argument("--verify-handoff")
+     args=parser.parse_args(argv)
+     try:
+         if args.capabilities:
+@@ -22,9 +28,34 @@ def main(argv=None):
+             return 0
+         if not args.allowed_root:
+             raise ValueError("allowed_root_required")
++        service=SpecMeshService(args.allowed_root)
++        if args.verify_handoff:
++            if args.verify_handoff == "-":
++                raw_h = sys.stdin.read()
++            else:
++                raw_h = Path(args.verify_handoff).read_text(encoding="utf-8")
++            h_data = json.loads(raw_h)
++            v_res = service.verify_handoff(h_data, args.allowed_root[0])
++            print(json.dumps(v_res, ensure_ascii=False))
++            return 0 if v_res["executable"] else 3
+         raw=sys.stdin.buffer.read(65537)
+         if len(raw)>65536: raise ValueError("request_too_large")
+-        result=SpecMeshService(args.allowed_root).check(json.loads(raw))
++        request=json.loads(raw)
++        if args.handoff:
++            result=service.prepare_handoff(request)
++            if args.handoff == "json":
++                print(json.dumps(result,ensure_ascii=False))
++            else:
++                print(render_handoff(result),end="")
++            return 0 if result["executable"] else 3
++        if args.project_state:
++            result=service.project_state(request)
++            if args.project_state == "json":
++                print(json.dumps(result,ensure_ascii=False))
++            else:
++                print(render_project_state(result),end="")
++            return 0 if result["state"]=="observed" else 3
++        result=service.check(request)
+         print(json.dumps(result,ensure_ascii=False))
+         return 0 if result["status"]=="pass" else 3
+     except Exception as exc:
+diff --git a/specmesh_port/service.py b/specmesh_port/service.py
+index b9dec49..0d4c959 100644
+--- a/specmesh_port/service.py
++++ b/specmesh_port/service.py
+@@ -15,6 +15,8 @@ from pathlib import Path
+ 
+ from .contracts_runtime import validate
+ from .git_reader import read_git
++from .handoff import build_handoff, verify_pre_consumption
++from .project_state import MarkdownStateSource, build_project_state
+ from .snapshot import DocumentSnapshot, MAX_DOCUMENT_BYTES
+ 
+ 
+@@ -189,6 +191,155 @@ class SpecMeshService:
+             result["status"] = "blocked"
+         return validate("specmesh-result", result)
+ 
++    def project_state(self, request):
++        """Return a source-bound semantic state model without changing old results."""
++        validate("specmesh-request", request)
++        issues: list[dict[str, object]] = []
++        coverage: list[dict[str, object]] = []
++        sources: dict[str, MarkdownStateSource] = {}
++        observed_head = None
++
++        def issue(code, severity, field, message):
++            issues.append({"code": code, "severity": severity, "field": field or "observation", "message": message})
++
++        try:
++            if request["operation"] not in ("inspect", "check"):
++                raise ValueError("project_state_operation_required")
++            root = self._root(request["repo_root"])
++            with DocumentSnapshot(root) as snapshot:
++                actual_root = Path(os.fsdecode(self._git(root, "rev-parse", "--show-toplevel")).strip()).resolve()
++                if actual_root != root:
++                    raise ValueError("request_must_bind_repository_root")
++                observed_head = self._git(root, "rev-parse", "HEAD").decode().strip()
++                if observed_head != request["expected_head"]:
++                    issue("head_changed", "error", "baseline", "Current checkout does not match expected_head.")
++                selected, _ = self._select(snapshot, request, issue)
++                for relative in selected:
++                    snapshot.read(relative, optional=True)
++                metadata = self._metadata(root, selected)
++                for relative in selected:
++                    raw = snapshot.read(relative, optional=True)
++                    if raw is None:
++                        if relative not in ("AGENTS.md", "PROJECT.md"):
++                            issue("missing_optional_reference", "warning", relative, "Selected document is not present.")
++                        continue
++                    tracked = bool(metadata[relative][0])
++                    modified = self._modified(snapshot.files[relative], metadata[relative], observed_head)
++                    coverage.append({"path": relative, "sha256": hashlib.sha256(raw).hexdigest(),
++                                     "tracked": tracked, "modified": modified})
++                    sources[relative] = MarkdownStateSource(relative, raw)
++                    if modified:
++                        issue("uncommitted_project_fact", "warning", relative,
++                              "Working bytes or index differ from HEAD; this observation covers the current bytes only.")
++                if self._metadata(root, selected) != metadata:
++                    issue("git_metadata_changed_during_check", "error", "baseline", "Retry on a stable index and worktree.")
++                snapshot.verify()
++                if self._git(root, "rev-parse", "HEAD").decode().strip() != observed_head:
++                    issue("head_changed_during_check", "error", "baseline", "Retry on a stable baseline.")
++        except (OSError, ValueError, RuntimeError, UnicodeError, subprocess.SubprocessError) as exc:
++            reason = str(exc) if isinstance(exc, ValueError) and re.fullmatch(r"[a-z_]+", str(exc)) else type(exc).__name__
++            issue("state_unavailable", "error", "observation", reason)
++
++        task_path = request["task_path"]
++        prefix = str(Path(task_path)) if task_path else None
++        state = build_project_state(
++            project=sources.get("PROJECT.md"),
++            task_plan=sources.get(str(Path(prefix) / "task_plan.md")) if prefix else None,
++            findings=sources.get(str(Path(prefix) / "findings.md")) if prefix else None,
++            progress=sources.get(str(Path(prefix) / "progress.md")) if prefix else None,
++            task_path=prefix,
++            observed_head=observed_head,
++            expected_head=request["expected_head"],
++            coverage=coverage,
++            issues=issues,
++        )
++        return validate("specmesh-project-state", state)
++
++    def prepare_handoff(self, request):
++        """Generate a source-bound, dirty-covered handoff material for downstream consumption."""
++        validate("specmesh-request", request)
++        issues: list[dict[str, object]] = []
++        coverage: list[dict[str, object]] = []
++        sources: dict[str, MarkdownStateSource] = {}
++        observed_head = None
++
++        def issue(code, severity, field, message):
++            issues.append({"code": code, "severity": severity, "field": field or "observation", "message": message})
++
++        try:
++            if request["operation"] not in ("prepare_handoff", "inspect", "check"):
++                raise ValueError("prepare_handoff_operation_required")
++            root = self._root(request["repo_root"])
++            with DocumentSnapshot(root) as snapshot:
++                actual_root = Path(os.fsdecode(self._git(root, "rev-parse", "--show-toplevel")).strip()).resolve()
++                if actual_root != root:
++                    raise ValueError("request_must_bind_repository_root")
++                observed_head = self._git(root, "rev-parse", "HEAD").decode().strip()
++                if observed_head != request["expected_head"]:
++                    issue("head_changed", "error", "baseline", "Current checkout does not match expected_head.")
++                selected, _ = self._select(snapshot, request, issue)
++                for relative in selected:
++                    snapshot.read(relative, optional=True)
++                metadata = self._metadata(root, selected)
++                for relative in selected:
++                    raw = snapshot.read(relative, optional=True)
++                    if raw is None:
++                        if relative not in ("AGENTS.md", "PROJECT.md"):
++                            issue("missing_optional_reference", "warning", relative, "Selected document is not present.")
++                        continue
++                    tracked = bool(metadata[relative][0])
++                    modified = self._modified(snapshot.files[relative], metadata[relative], observed_head)
++                    coverage.append({"path": relative, "sha256": hashlib.sha256(raw).hexdigest(),
++                                     "tracked": tracked, "modified": modified})
++                    sources[relative] = MarkdownStateSource(relative, raw)
++                    if modified:
++                        issue("uncommitted_project_fact", "warning", relative,
++                              "Working bytes or index differ from HEAD; this observation covers the current bytes only.")
++                if self._metadata(root, selected) != metadata:
++                    issue("git_metadata_changed_during_check", "error", "baseline", "Retry on a stable index and worktree.")
++                snapshot.verify()
++                if self._git(root, "rev-parse", "HEAD").decode().strip() != observed_head:
++                    issue("head_changed_during_check", "error", "baseline", "Retry on a stable baseline.")
++        except (OSError, ValueError, RuntimeError, UnicodeError, subprocess.SubprocessError) as exc:
++            reason = str(exc) if isinstance(exc, ValueError) and re.fullmatch(r"[a-z_]+", str(exc)) else type(exc).__name__
++            issue("handoff_unavailable", "error", "observation", reason)
++
++        task_path = request["task_path"]
++        prefix = str(Path(task_path)) if task_path else None
++        root = Path(request["repo_root"])
++
++        decisions_source = None
++        for cand in ("docs/DECISIONS.md", "DECISIONS.md"):
++            if cand in sources:
++                decisions_source = sources[cand]
++                break
++        if not decisions_source and (root / "docs/DECISIONS.md").is_file():
++            try:
++                dec_raw = (root / "docs/DECISIONS.md").read_bytes()
++                decisions_source = MarkdownStateSource("docs/DECISIONS.md", dec_raw)
++            except OSError:
++                pass
++
++        handoff = build_handoff(
++            project=sources.get("PROJECT.md"),
++            task_plan=sources.get(str(Path(prefix) / "task_plan.md")) if prefix else None,
++            findings=sources.get(str(Path(prefix) / "findings.md")) if prefix else None,
++            progress=sources.get(str(Path(prefix) / "progress.md")) if prefix else None,
++            decisions_doc=decisions_source,
++            task_path=prefix,
++            observed_head=observed_head,
++            expected_head=request["expected_head"],
++            coverage=coverage,
++            repo_root=root,
++            issues=issues,
++        )
++        return validate("specmesh-handoff", handoff)
++
++    def verify_handoff(self, handoff, repo_root):
++        """Verify pre-consumption conditions of handoff material against a repository."""
++        root = self._root(repo_root)
++        return verify_pre_consumption(handoff, root)
++
+     def propose_update(self, repo_root, relative_path, *, base_sha256, new_content):
+         """Return a reviewable patch only, against a consistent base; never apply it."""
+         root = self._root(repo_root)

@@ -1,4 +1,10 @@
-# Independent SpecMesh machine port and CM lifecycle integration
+# Independent SpecMesh machine port — historical roadmap
+
+> 2026-09-15 范围决定：SpecMesh 独立发展，不再要求 CM 接轨。下文 CM 适配要求、SM-A10 配对验收和历史外仓状态仅作追溯，不是当前交付义务。SM-P2 退出范围而非完成；独立权威/真实交接由活动计划 S2/S3 承接。更广信任模型及完整 provider/device 矩阵仅为可选扩展，不绑定 Orca。
+
+> 2026-09-14 承接说明：当前唯一活动交付计划为 [bounded-delivery](../bounded-delivery/task_plan.md)，状态见 [progress](../bounded-delivery/progress.md)。先独立状态、dirty 交接、全新 Agent B 实际结果和独立发行；当前S1已接受，S2主助手本地修复/双Python验证通过但独立审查平台阻塞，S3未运行，R1仅候选准备。本文件下方保留原阶段及历史范围，不是另一条待自动执行的主线。
+>
+> 2026-09-13 审计确认 SM-P0 Acceptance 列窄技术出口通过（下方 planned 为旧状态），SM-P1 限声明 POSIX profile 通过；不重做或扩大这两项结论。原 progress 的“commits/remote CI remain”已由该审计纠正。更广的 CM lifecycle、外部验收和 provider/device 条件仍开放，映射及证据见 [当前 findings](../bounded-delivery/findings.md)。
 
 ## Status / owner
 
@@ -20,9 +26,9 @@ Status: consistent snapshot published as v1.2.1, paired with the TypeScript CM c
 
 | ID | Work | Acceptance | State |
 |---|---|---|---|
-| SM-P0 | Draft contract review and standalone distribution | No CM dependency; CLI in clean optional runtime; schema fixtures and bounded input/output | planned |
+| SM-P0 | Draft contract review and standalone distribution | No CM dependency; CLI in clean optional runtime; schema fixtures and bounded input/output | accepted for the historical narrow profile; see bounded-delivery mapping |
 | SM-P1 | Consistent inspection snapshot including dirty content | Concurrent HEAD/uncommitted edit/symlink replacement tests; stale references detected | complete for declared POSIX snapshot profile; standalone/paired checks and release CI passed |
-| SM-P2 | CM hook semantics: task start, handoff, verify, closeout | Hook request carries scope/version/evidence; timeout/unknown fail required gate; no implicit TaskHub writes | task-start/handoff/unknown-closeout candidate passes paired tests; external acceptance ownership remains open |
+| SM-P2 | CM hook semantics: task start, handoff, verify, closeout | Historical host-specific gate requirements only | retired from SpecMesh scope by user on 2026-09-15, not accepted/completed; paired-test history retained |
 | SM-P3 | Reviewed authority and acceptance evidence provenance | Self-reported passed manifest never certifies external result; reviewer and evidence identity explicit | planned |
 | SM-P4 | Repeatable real Agent takeover across controlled repos | Agent finds current intent/decisions/plan and produces accepted task result without replaying all history | planned |
 
@@ -36,9 +42,6 @@ Keep SPEC.md backward compatible unless a separately reviewed normative release 
 
 ## Dependencies / next
 
-CM lifecycle ownership: https://github.com/muqiao215/ControlMesh/blob/main/plans/runtime-convergence/task_plan.md
-Viewer context evidence: https://github.com/muqiao215/Codex-Claude-History-Viewer/blob/main/plans/agent-handoff-service/task_plan.md
-Next: finish explicit artifact-requirement adoption in the CM host. The independent
-source candidate transport passes 57 standalone tests and 9 paired CM tests; it
-does not authorize execution or verify task completion. Required unknown closeout remains blocked until external
-acceptance is owned and verified; structural checks cannot supply that evidence.
+Next: follow [bounded-delivery](../bounded-delivery/task_plan.md): independent S2 acceptance → real fresh-Agent S3 → standalone R1. No CM host adoption or cross-repository release is required. Unknown closeout still cannot become verified merely through structural checks.
+
+Historical references only (not dependencies): [CM lifecycle](https://github.com/muqiao215/ControlMesh/blob/main/plans/runtime-convergence/task_plan.md), [Viewer evidence](https://github.com/muqiao215/Codex-Claude-History-Viewer/blob/main/plans/agent-handoff-service/task_plan.md). The earlier 57 standalone / 9 paired checks remain historical results, not current acceptance.

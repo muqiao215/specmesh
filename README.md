@@ -7,7 +7,7 @@ SpecMesh 是一套轻量的项目连续性规范，帮助人和 Agent 跨会话�
 ## 开始
 
 - 阅读 [SpecMesh 规范 v1.1.0](SPEC.md)
-- 开发本仓库：从 [AGENTS.md](AGENTS.md) → [PROJECT.md](PROJECT.md) 进入
+- 开发本仓库：从 [AGENTS.md](https://github.com/muqiao215/specmesh/blob/main/AGENTS.md) → [PROJECT.md](https://github.com/muqiao215/specmesh/blob/main/PROJECT.md) 进入
 - 新项目可从 [templates/](templates/) 复制最小文件
 - 用 `SpecMesh init` 初始化，用 `SpecMesh check` 只读检查，用 `SpecMesh sync` 同步规范，用 `SpecMesh compact` 压缩膨胀的记忆
 
@@ -37,7 +37,7 @@ SpecMesh 不是 Skill、Harness、Agent 编排系统或 Spec-Driven Development 
 
 ## Map v0 实验
 
-仓库包含一个非规范性的 Map v0 spike，用来验证“共享地址与检索、分离事实权威”：
+源码仓库（不包含在独立运行时 ZIP 中）包含一个非规范性的 Map v0 spike，用来验证“共享地址与检索、分离事实权威”。以下命令需在完整源码 checkout 中执行：
 
 - 代码结构由仓库自动派生，缓存可删除、可重建。
 - 项目语义来自已审查的 Markdown，关系明确标记为 `asserted`。
@@ -53,7 +53,7 @@ python3 scripts/map_v0.py focus "task description"
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-入口见 [`.specmesh/context.md`](.specmesh/context.md)。生成的 `.specmesh/cache/` 不进入 Git，也不属于项目事实源。
+入口见 [`.specmesh/context.md`](https://github.com/muqiao215/specmesh/blob/main/.specmesh/context.md)。生成的 `.specmesh/cache/` 不进入 Git，也不属于项目事实源。
 
 ### Area Overlay v0 结论（adopt / adapt / reject）
 
@@ -67,8 +67,26 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 
 [MIT](LICENSE)
 
-## Workflow integration (v1.2.1)
+## Independent runtime (v1.3.0)
+
+The optional runtime provides source-bound project state, scoped dirty handoff and installation
+integrity checks. Python 3.11/3.12 on the declared POSIX profile are supported. CM, History and Orca
+are not required. S1–S3 have independent acceptance; publication status and evidence are in
+[bounded delivery](https://github.com/muqiao215/specmesh/blob/main/plans/bounded-delivery/progress.md) and [Releases](https://github.com/muqiao215/specmesh/releases).
+
+For a reproducible archive from committed release inputs, run:
+
+```sh
+python3 -B scripts/build_release.py --version 1.3.0 --output dist/specmesh-1.3.0.zip
+python3 -m zipfile -e dist/specmesh-1.3.0.zip /absolute/install/specmesh-1.3.0
+python3 -I -B /absolute/install/specmesh-1.3.0/scripts/verify_install.py --package-root /absolute/install/specmesh-1.3.0
+python3 -I -B /absolute/install/specmesh-1.3.0/scripts/smoke_release.py --package-root /absolute/install/specmesh-1.3.0
+```
+
+The builder labels uncommitted content as a candidate and records every packaged file hash;
+omitting `--allow-dirty` requires committed release inputs. Run the smoke script from an unpacked
+archive to verify that runtime, rather than the development checkout. No standard symlink is changed.
 
 See [implementation boundaries and commands](docs/CODEKIT-INTEGRATION.md).
 
-Distribution version: **v1.2.1**. The normative document standard remains **SpecMesh v1.1.0**; the optional machine port uses **specmesh.port.v1-draft** with **specmesh.snapshot.v1** capabilities. These versions describe different contracts. Verified publication and rollout status are recorded in the [active plan](plans/independent-plugin-port/progress.md).
+Distribution version: **v1.3.0**. The normative document standard remains **SpecMesh v1.1.0**; the optional machine port uses **specmesh.port.v1-draft** with **specmesh.snapshot.v1** capabilities. These versions describe different contracts. Integrity checks detect changed declared files; they do not authenticate an untrusted manifest. Keep older runtime directories for rollback; never overwrite project memory to install an upgrade.

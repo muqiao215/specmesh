@@ -1,0 +1,39 @@
+test_symbol_extraction_retains_configuration_entry (test_map_v0.RealTaskFocusTests.test_symbol_extraction_retains_configuration_entry) ... FAIL
+test_cache_freshness_retains_configuration_entry (test_map_v0.RealTaskFocusTests.test_cache_freshness_retains_configuration_entry) ... FAIL
+test_done_and_in_progress_current_declarations_conflict_with_sources (test_machine_port.MachinePortTests.test_done_and_in_progress_current_declarations_conflict_with_sources) ... FAIL
+
+======================================================================
+FAIL: test_symbol_extraction_retains_configuration_entry (test_map_v0.RealTaskFocusTests.test_symbol_extraction_retains_configuration_entry)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/muqiao/桌面/obsidian/my-programming-world/编程/SpecMesh/tests/test_map_v0.py", line 135, in test_symbol_extraction_retains_configuration_entry
+    self._assert_configuration_entry("fix Python public symbol extraction")
+  File "/home/muqiao/桌面/obsidian/my-programming-world/编程/SpecMesh/tests/test_map_v0.py", line 145, in _assert_configuration_entry
+    self.assertTrue(any(line.startswith(f"- {address} [") for line in view.splitlines()),
+AssertionError: False is not true : Missing node code://.specmesh/context.md for fix Python public symbol extraction
+
+======================================================================
+FAIL: test_cache_freshness_retains_configuration_entry (test_map_v0.RealTaskFocusTests.test_cache_freshness_retains_configuration_entry)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/muqiao/桌面/obsidian/my-programming-world/编程/SpecMesh/tests/test_map_v0.py", line 138, in test_cache_freshness_retains_configuration_entry
+    self._assert_configuration_entry("verify content hash freshness and cache rebuild")
+  File "/home/muqiao/桌面/obsidian/my-programming-world/编程/SpecMesh/tests/test_map_v0.py", line 145, in _assert_configuration_entry
+    self.assertTrue(any(line.startswith(f"- {address} [") for line in view.splitlines()),
+AssertionError: False is not true : Missing node code://.specmesh/context.md for verify content hash freshness and cache rebuild
+
+======================================================================
+FAIL: test_done_and_in_progress_current_declarations_conflict_with_sources (test_machine_port.MachinePortTests.test_done_and_in_progress_current_declarations_conflict_with_sources)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/muqiao/桌面/obsidian/my-programming-world/编程/SpecMesh/tests/test_machine_port.py", line 211, in test_done_and_in_progress_current_declarations_conflict_with_sources
+    self.assertEqual(state['state'], 'ambiguous')
+AssertionError: 'observed' != 'ambiguous'
+- observed
++ ambiguous
+
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.229s
+
+FAILED (failures=3)

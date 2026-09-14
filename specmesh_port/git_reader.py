@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import selectors
 import shutil
 import subprocess
@@ -11,7 +12,12 @@ MAX_GIT_OUTPUT = 512 * 1024
 
 
 def read_git(root, *args):
-    if not args or args[0] not in {"rev-parse", "ls-files", "ls-tree"}:
+    if not args:
+        raise ValueError("git_operation_not_read_only")
+    if args[0] == "cat-file":
+        if len(args) != 3 or args[1] not in ("blob", "-p") or not re.fullmatch(r"[a-f0-9]{40}|[a-f0-9]{64}", args[2]):
+            raise ValueError("git_operation_not_read_only")
+    elif args[0] not in {"rev-parse", "ls-files", "ls-tree"}:
         raise ValueError("git_operation_not_read_only")
     binary = shutil.which("git")
     if not binary:

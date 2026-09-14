@@ -1,0 +1,1772 @@
+diff --git a/specmesh_port/__main__.py b/specmesh_port/__main__.py
+index db11530..5b4a564 100644
+--- a/specmesh_port/__main__.py
++++ b/specmesh_port/__main__.py
+@@ -2,14 +2,20 @@ import argparse
+ import json
+ import os
+ import sys
++from pathlib import Path
+ from .service import SpecMeshService
+ from .contracts_runtime import validate
++from .project_state import render_project_state
++from .handoff import render_handoff
+ 
+ 
+ def main(argv=None):
+     parser=argparse.ArgumentParser(description="Independent, read-only SpecMesh machine-profile proposal")
+     parser.add_argument("--allowed-root",action="append")
+     parser.add_argument("--capabilities",action="store_true")
++    parser.add_argument("--project-state",choices=("json", "text"))
++    parser.add_argument("--handoff",choices=("json", "text"))
++    parser.add_argument("--verify-handoff")
+     args=parser.parse_args(argv)
+     try:
+         if args.capabilities:
+@@ -22,9 +28,46 @@ def main(argv=None):
+             return 0
+         if not args.allowed_root:
+             raise ValueError("allowed_root_required")
++        service=SpecMeshService(args.allowed_root)
++        if args.verify_handoff:
++            max_bytes = 1024 * 1024
++            if args.verify_handoff == "-":
++                raw_b = sys.stdin.buffer.read(max_bytes + 1)
++                if len(raw_b) > max_bytes:
++                    raise ValueError("handoff_payload_too_large")
++                raw_h = raw_b.decode("utf-8")
++            else:
++                p = Path(args.verify_handoff)
++                if not p.is_file() or p.is_symlink():
++                    raise ValueError("handoff_file_invalid")
++                if p.stat().st_size > max_bytes:
++                    raise ValueError("handoff_payload_too_large")
++                raw_b = p.read_bytes()
++                if len(raw_b) > max_bytes:
++                    raise ValueError("handoff_payload_too_large")
++                raw_h = raw_b.decode("utf-8")
++            h_data = json.loads(raw_h)
++            v_res = service.verify_handoff(h_data, args.allowed_root[0])
++            print(json.dumps(v_res, ensure_ascii=False))
++            return 0 if v_res["executable"] else 3
+         raw=sys.stdin.buffer.read(65537)
+         if len(raw)>65536: raise ValueError("request_too_large")
+-        result=SpecMeshService(args.allowed_root).check(json.loads(raw))
++        request=json.loads(raw)
++        if args.handoff:
++            result=service.prepare_handoff(request)
++            if args.handoff == "json":
++                print(json.dumps(result,ensure_ascii=False))
++            else:
++                print(render_handoff(result),end="")
++            return 0 if result["executable"] else 3
++        if args.project_state:
++            result=service.project_state(request)
++            if args.project_state == "json":
++                print(json.dumps(result,ensure_ascii=False))
++            else:
++                print(render_project_state(result),end="")
++            return 0 if result["state"]=="observed" else 3
++        result=service.check(request)
+         print(json.dumps(result,ensure_ascii=False))
+         return 0 if result["status"]=="pass" else 3
+     except Exception as exc:
+diff --git a/specmesh_port/git_reader.py b/specmesh_port/git_reader.py
+index 252324f..7e59d33 100644
+--- a/specmesh_port/git_reader.py
++++ b/specmesh_port/git_reader.py
+@@ -2,6 +2,7 @@
+ from __future__ import annotations
+ 
+ import os
++import re
+ import selectors
+ import shutil
+ import subprocess
+@@ -11,7 +12,12 @@ MAX_GIT_OUTPUT = 512 * 1024
+ 
+ 
+ def read_git(root, *args):
+-    if not args or args[0] not in {"rev-parse", "ls-files", "ls-tree"}:
++    if not args:
++        raise ValueError("git_operation_not_read_only")
++    if args[0] == "cat-file":
++        if len(args) != 3 or args[1] not in ("blob", "-p") or not re.fullmatch(r"[a-f0-9]{40}|[a-f0-9]{64}", args[2]):
++            raise ValueError("git_operation_not_read_only")
++    elif args[0] not in {"rev-parse", "ls-files", "ls-tree"}:
+         raise ValueError("git_operation_not_read_only")
+     binary = shutil.which("git")
+     if not binary:
+diff --git a/specmesh_port/service.py b/specmesh_port/service.py
+index b9dec49..d56912e 100644
+--- a/specmesh_port/service.py
++++ b/specmesh_port/service.py
+@@ -15,6 +15,8 @@ from pathlib import Path
+ 
+ from .contracts_runtime import validate
+ from .git_reader import read_git
++from .handoff import build_handoff, verify_pre_consumption
++from .project_state import MarkdownStateSource, build_project_state
+ from .snapshot import DocumentSnapshot, MAX_DOCUMENT_BYTES
+ 
+ 
+@@ -189,6 +191,158 @@ class SpecMeshService:
+             result["status"] = "blocked"
+         return validate("specmesh-result", result)
+ 
++    def project_state(self, request):
++        """Return a source-bound semantic state model without changing old results."""
++        validate("specmesh-request", request)
++        issues: list[dict[str, object]] = []
++        coverage: list[dict[str, object]] = []
++        sources: dict[str, MarkdownStateSource] = {}
++        observed_head = None
++
++        def issue(code, severity, field, message):
++            issues.append({"code": code, "severity": severity, "field": field or "observation", "message": message})
++
++        try:
++            if request["operation"] not in ("inspect", "check"):
++                raise ValueError("project_state_operation_required")
++            root = self._root(request["repo_root"])
++            with DocumentSnapshot(root) as snapshot:
++                actual_root = Path(os.fsdecode(self._git(root, "rev-parse", "--show-toplevel")).strip()).resolve()
++                if actual_root != root:
++                    raise ValueError("request_must_bind_repository_root")
++                observed_head = self._git(root, "rev-parse", "HEAD").decode().strip()
++                if observed_head != request["expected_head"]:
++                    issue("head_changed", "error", "baseline", "Current checkout does not match expected_head.")
++                selected, _ = self._select(snapshot, request, issue)
++                for relative in selected:
++                    snapshot.read(relative, optional=True)
++                metadata = self._metadata(root, selected)
++                for relative in selected:
++                    raw = snapshot.read(relative, optional=True)
++                    if raw is None:
++                        if relative not in ("AGENTS.md", "PROJECT.md"):
++                            issue("missing_optional_reference", "warning", relative, "Selected document is not present.")
++                        continue
++                    tracked = bool(metadata[relative][0])
++                    modified = self._modified(snapshot.files[relative], metadata[relative], observed_head)
++                    coverage.append({"path": relative, "sha256": hashlib.sha256(raw).hexdigest(),
++                                     "tracked": tracked, "modified": modified})
++                    sources[relative] = MarkdownStateSource(relative, raw)
++                    if modified:
++                        issue("uncommitted_project_fact", "warning", relative,
++                              "Working bytes or index differ from HEAD; this observation covers the current bytes only.")
++                if self._metadata(root, selected) != metadata:
++                    issue("git_metadata_changed_during_check", "error", "baseline", "Retry on a stable index and worktree.")
++                snapshot.verify()
++                if self._git(root, "rev-parse", "HEAD").decode().strip() != observed_head:
++                    issue("head_changed_during_check", "error", "baseline", "Retry on a stable baseline.")
++        except (OSError, ValueError, RuntimeError, UnicodeError, subprocess.SubprocessError) as exc:
++            reason = str(exc) if isinstance(exc, ValueError) and re.fullmatch(r"[a-z_]+", str(exc)) else type(exc).__name__
++            issue("state_unavailable", "error", "observation", reason)
++
++        task_path = request["task_path"]
++        prefix = str(Path(task_path)) if task_path else None
++        state = build_project_state(
++            project=sources.get("PROJECT.md"),
++            task_plan=sources.get(str(Path(prefix) / "task_plan.md")) if prefix else None,
++            findings=sources.get(str(Path(prefix) / "findings.md")) if prefix else None,
++            progress=sources.get(str(Path(prefix) / "progress.md")) if prefix else None,
++            task_path=prefix,
++            observed_head=observed_head,
++            expected_head=request["expected_head"],
++            coverage=coverage,
++            issues=issues,
++        )
++        return validate("specmesh-project-state", state)
++
++    def prepare_handoff(self, request):
++        """Generate a source-bound, dirty-covered handoff material for downstream consumption."""
++        validate("specmesh-request", request)
++        issues: list[dict[str, object]] = []
++        coverage: list[dict[str, object]] = []
++        sources: dict[str, MarkdownStateSource] = {}
++        selected: list[str] = []
++        observed_head = None
++
++        def issue(code, severity, field, message):
++            issues.append({"code": code, "severity": severity, "field": field or "observation", "message": message})
++
++        try:
++            if request["operation"] not in ("prepare_handoff", "inspect", "check"):
++                raise ValueError("prepare_handoff_operation_required")
++            root = self._root(request["repo_root"])
++            with DocumentSnapshot(root) as snapshot:
++                actual_root = Path(os.fsdecode(self._git(root, "rev-parse", "--show-toplevel")).strip()).resolve()
++                if actual_root != root:
++                    raise ValueError("request_must_bind_repository_root")
++                observed_head = self._git(root, "rev-parse", "HEAD").decode().strip()
++                if observed_head != request["expected_head"]:
++                    issue("head_changed", "error", "baseline", "Current checkout does not match expected_head.")
++                selected, _ = self._select(snapshot, request, issue)
++                for relative in selected:
++                    snapshot.read(relative, optional=True)
++                metadata = self._metadata(root, selected)
++                for relative in selected:
++                    raw = snapshot.read(relative, optional=True)
++                    if raw is None:
++                        if relative not in ("AGENTS.md", "PROJECT.md"):
++                            issue("missing_optional_reference", "warning", relative, "Selected document is not present.")
++                        continue
++                    tracked = bool(metadata[relative][0])
++                    modified = self._modified(snapshot.files[relative], metadata[relative], observed_head)
++                    coverage.append({"path": relative, "sha256": hashlib.sha256(raw).hexdigest(),
++                                     "tracked": tracked, "modified": modified})
++                    sources[relative] = MarkdownStateSource(relative, raw)
++                    if modified:
++                        issue("uncommitted_project_fact", "warning", relative,
++                              "Working bytes or index differ from HEAD; this observation covers the current bytes only.")
++                if self._metadata(root, selected) != metadata:
++                    issue("git_metadata_changed_during_check", "error", "baseline", "Retry on a stable index and worktree.")
++                snapshot.verify()
++                if self._git(root, "rev-parse", "HEAD").decode().strip() != observed_head:
++                    issue("head_changed_during_check", "error", "baseline", "Retry on a stable baseline.")
++        except (OSError, ValueError, RuntimeError, UnicodeError, subprocess.SubprocessError) as exc:
++            reason = str(exc) if isinstance(exc, ValueError) and re.fullmatch(r"[a-z_]+", str(exc)) else type(exc).__name__
++            issue("handoff_unavailable", "error", "observation", reason)
++
++        task_path = request["task_path"]
++        prefix = str(Path(task_path)) if task_path else None
++        root = Path(request["repo_root"])
++
++        decisions_source = None
++        for cand in ("docs/DECISIONS.md", "DECISIONS.md"):
++            if cand in sources:
++                decisions_source = sources[cand]
++                break
++        if not decisions_source and (root / "docs/DECISIONS.md").is_file():
++            try:
++                dec_raw = (root / "docs/DECISIONS.md").read_bytes()
++                decisions_source = MarkdownStateSource("docs/DECISIONS.md", dec_raw)
++            except OSError:
++                pass
++
++        handoff = build_handoff(
++            project=sources.get("PROJECT.md"),
++            task_plan=sources.get(str(Path(prefix) / "task_plan.md")) if prefix else None,
++            findings=sources.get(str(Path(prefix) / "findings.md")) if prefix else None,
++            progress=sources.get(str(Path(prefix) / "progress.md")) if prefix else None,
++            decisions_doc=decisions_source,
++            task_path=prefix,
++            observed_head=observed_head,
++            expected_head=request["expected_head"],
++            coverage=coverage,
++            repo_root=root,
++            issues=issues,
++            selected_paths=set(selected),
++            snapshot=snapshot,
++        )
++        return validate("specmesh-handoff", handoff)
++
++    def verify_handoff(self, handoff, repo_root):
++        """Verify pre-consumption conditions of handoff material against a repository."""
++        root = self._root(repo_root)
++        return verify_pre_consumption(handoff, root)
++
+     def propose_update(self, repo_root, relative_path, *, base_sha256, new_content):
+         """Return a reviewable patch only, against a consistent base; never apply it."""
+         root = self._root(repo_root)
+diff --git a/specmesh_port/snapshot.py b/specmesh_port/snapshot.py
+index 066d7d7..c86d531 100644
+--- a/specmesh_port/snapshot.py
++++ b/specmesh_port/snapshot.py
+@@ -7,7 +7,7 @@ from dataclasses import dataclass
+ from pathlib import Path
+ 
+ MAX_DOCUMENT_BYTES = 256 * 1024
+-MAX_DOCUMENTS = 64
++MAX_DOCUMENTS = 256
+ 
+ 
+ def identity(value):
+diff --git a/specmesh_port/handoff.py b/specmesh_port/handoff.py
+new file mode 100644
+index 0000000..c1fdd88
+--- /dev/null
++++ b/specmesh_port/handoff.py
+@@ -0,0 +1,790 @@
++"""Bounded extraction, rendering, and pre-consumption verification for SpecMesh handoff."""
++from __future__ import annotations
++
++import hashlib
++import json
++import os
++import re
++from pathlib import Path
++
++from .contracts_runtime import validate
++from .git_reader import read_git
++from .project_state import (
++    MarkdownStateSource,
++    _bounded,
++    _classifications,
++    _heading_key,
++    _source_text,
++    _statement,
++    _visible,
++)
++from .snapshot import DocumentSnapshot, MAX_DOCUMENT_BYTES
++
++HANDOFF_SCHEMA_VERSION = "specmesh.handoff.v1"
++
++
++def compute_scope_fingerprint(
++    observed_head: str | None,
++    coverage: list[dict[str, object]],
++    dirty_entries: list[dict[str, object]],
++    evidence_bindings: list[dict[str, object]],
++) -> str:
++    """Deterministic SHA-256 fingerprint over observed baseline, coverage, dirty state, and evidence."""
++    hasher = hashlib.sha256()
++    hasher.update((observed_head or "none").encode("utf-8"))
++    for item in sorted(coverage, key=lambda x: str(x.get("path", ""))):
++        hasher.update(
++            f"|cov:{item.get('path')}:{item.get('sha256')}:{item.get('tracked')}:{item.get('modified')}".encode("utf-8")
++        )
++    for item in sorted(dirty_entries, key=lambda x: str(x.get("path", ""))):
++        hasher.update(
++            f"|dirty:{item.get('path')}:{item.get('kind')}:{item.get('staged_sha256')}:{item.get('worktree_sha256')}".encode("utf-8")
++        )
++    for item in sorted(evidence_bindings, key=lambda x: str(x.get("evidence_ref") or x.get("statement", ""))):
++        hasher.update(
++            f"|ev:{item.get('evidence_ref')}:{item.get('evidence_sha256')}:{item.get('baseline_head')}:{item.get('status')}".encode("utf-8")
++        )
++    return hasher.hexdigest()
++
++
++def scan_git_dirty(
++    root: Path,
++    head: str | None,
++    task_path: str | None = None,
++    selected_paths: set[str] | None = None,
++) -> tuple[dict[str, int], list[dict[str, object]]]:
++    """Inspect staged, unstaged, and task-relevant untracked files using bounded git plumbing."""
++    if not head:
++        return {"staged_count": 0, "unstaged_count": 0, "untracked_count": 0}, []
++
++    stage_raw = read_git(root, "ls-files", "--stage", "-z")
++    index: dict[str, tuple[str, str]] = {}
++    for row in stage_raw.split(b"\0"):
++        if not row:
++            continue
++        header, _, name = row.partition(b"\t")
++        parts = header.decode("ascii").split()
++        if len(parts) == 3:
++            mode, oid, _ = parts
++            index[name.decode("utf-8")] = (mode, oid)
++
++    tree_raw = read_git(root, "ls-tree", "-r", "-z", "HEAD")
++    tree: dict[str, tuple[str, str]] = {}
++    for row in tree_raw.split(b"\0"):
++        if not row:
++            continue
++        header, _, name = row.partition(b"\t")
++        parts = header.decode("ascii").split()
++        if len(parts) == 3:
++            mode, _, oid = parts
++            tree[name.decode("utf-8")] = (mode, oid)
++
++    modified_raw = read_git(root, "ls-files", "--modified", "-z")
++    unstaged_paths = {p.decode("utf-8") for p in modified_raw.split(b"\0") if p}
++
++    other_raw = read_git(root, "ls-files", "--others", "--exclude-standard", "-z")
++    all_untracked = [p.decode("utf-8") for p in other_raw.split(b"\0") if p]
++
++    # Only include untracked files strictly within task scope or selected paths
++    untracked_paths: list[str] = []
++    for p in all_untracked:
++        is_in_task = bool(task_path and (p == task_path or p.startswith(task_path.rstrip("/") + "/")))
++        is_selected = bool(selected_paths and p in selected_paths)
++        if is_in_task or is_selected:
++            untracked_paths.append(p)
++
++    staged_paths: set[str] = set()
++    for path, entry in index.items():
++        if path not in tree or tree[path] != entry:
++            staged_paths.add(path)
++    for path in tree:
++        if path not in index:
++            staged_paths.add(path)
++
++    all_paths = sorted(staged_paths | unstaged_paths | set(untracked_paths))
++    # Bound dirty entries to 100 before schema validation
++    all_paths = all_paths[:100]
++
++    entries: list[dict[str, object]] = []
++
++    for path in all_paths:
++        is_staged = path in staged_paths
++        is_unstaged = path in unstaged_paths
++        is_untracked = path in untracked_paths
++
++        if is_staged and is_unstaged:
++            kind = "staged_and_unstaged"
++        elif is_staged:
++            kind = "staged"
++        elif is_unstaged:
++            kind = "unstaged"
++        elif is_untracked:
++            kind = "untracked"
++        else:
++            continue
++
++        staged_sha256 = None
++        staged_content = None
++        if is_staged and path in index:
++            _, oid = index[path]
++            try:
++                blob_bytes = read_git(root, "cat-file", "blob", oid)
++                staged_sha256 = hashlib.sha256(blob_bytes).hexdigest()
++                if len(blob_bytes) <= MAX_DOCUMENT_BYTES:
++                    try:
++                        staged_content = blob_bytes.decode("utf-8")
++                    except UnicodeDecodeError:
++                        staged_content = None
++            except Exception:
++                pass
++
++        full_file = root / path
++        worktree_sha256 = ""
++        retained_content = None
++
++        if full_file.is_file() and not full_file.is_symlink():
++            try:
++                st = full_file.stat()
++                if st.st_size <= MAX_DOCUMENT_BYTES:
++                    raw_bytes = full_file.read_bytes()
++                    worktree_sha256 = hashlib.sha256(raw_bytes).hexdigest()
++                    try:
++                        retained_content = raw_bytes.decode("utf-8")
++                    except UnicodeDecodeError:
++                        retained_content = None
++                else:
++                    hasher = hashlib.sha256()
++                    with open(full_file, "rb") as f:
++                        while chunk := f.read(65536):
++                            hasher.update(chunk)
++                    worktree_sha256 = hasher.hexdigest()
++            except OSError:
++                worktree_sha256 = hashlib.sha256(b"").hexdigest()
++        else:
++            worktree_sha256 = hashlib.sha256(b"").hexdigest()
++
++        head_sha256 = None
++        locator = f"file://{root.resolve()}/{path}"
++        entries.append({
++            "path": path,
++            "kind": kind,
++            "head_sha256": head_sha256,
++            "staged_sha256": staged_sha256,
++            "staged_content": staged_content,
++            "worktree_sha256": worktree_sha256,
++            "retained_content": retained_content,
++            "patch": None,
++            "locator": locator,
++        })
++
++    summary = {
++        "staged_count": len([e for e in entries if e["kind"] in ("staged", "staged_and_unstaged")]),
++        "unstaged_count": len([e for e in entries if e["kind"] in ("unstaged", "staged_and_unstaged")]),
++        "untracked_count": len([e for e in entries if e["kind"] == "untracked"]),
++    }
++    return summary, entries
++
++
++def extract_evidence_bindings(
++    sources: list[MarkdownStateSource],
++    repo_root: Path,
++) -> list[dict[str, object]]:
++    """Extract evidence statements and securely bind them to repository-internal evidence files."""
++    bindings: list[dict[str, object]] = []
++    seen_refs: set[str] = set()
++
++    for source in sources:
++        for heading in ("Evidence", "Verification", "验收", "已通过基线与尚未覆盖的条件", "本轮自查"):
++            for section in source.sections.get(_heading_key(heading), []):
++                for line, raw in section.rows:
++                    text = raw.strip()
++                    if not text or text.startswith("```") or text.startswith("|"):
++                        continue
++
++                    ref_path: str | None = None
++                    evidence_sha256: str | None = None
++                    reviewer: str | None = None
++                    baseline_head: str | None = None
++                    status = "unverified"
++                    is_external = False
++
++                    match = re.search(r"\[([^\]]+)\]\(([^)]+)\)", text)
++                    if match:
++                        link_target = match.group(2).split("#", 1)[0].strip()
++                        # Strictly reject absolute paths, external URLs, or path traversal
++                        if (not link_target.startswith("/") and "://" not in link_target
++                                and ".." not in Path(link_target).parts):
++                            src_dir = Path(source.path).parent
++                            candidate = (src_dir / link_target).as_posix()
++                            resolved = (repo_root / candidate).resolve()
++                            # Ensure resolution stays within authorized repository root
++                            if resolved.is_relative_to(repo_root.resolve()):
++                                ref_path = candidate
++
++                    if ref_path and ref_path not in seen_refs:
++                        seen_refs.add(ref_path)
++                        full_target = repo_root / ref_path
++                        if full_target.is_file() and not full_target.is_symlink():
++                            try:
++                                ev_bytes = full_target.read_bytes()
++                                if len(ev_bytes) <= MAX_DOCUMENT_BYTES:
++                                    evidence_sha256 = hashlib.sha256(ev_bytes).hexdigest()
++                                    ev_content = ev_bytes.decode("utf-8", errors="replace")
++                                    head_m = re.search(r"\b([0-9a-f]{40}|[0-9a-f]{64})\b", ev_content)
++                                    if head_m:
++                                        baseline_head = head_m.group(1)
++                                    reviewer_m = re.search(r"(?:审查者|reviewer|Reviewer)[：:\s]+([^\n,，;]+)", ev_content)
++                                    if reviewer_m:
++                                        reviewer = reviewer_m.group(1).strip()
++                                    # Text in markdown is asserted_candidate; never claim external verification
++                                    is_external = False
++                                    if re.search(r"\b(accepted|pass(?:ed)?)\b|通过|接受", ev_content, re.IGNORECASE):
++                                        status = "passed"
++                                    elif re.search(r"\b(failed|rejected)\b|失败|拒绝", ev_content, re.IGNORECASE):
++                                        status = "failed"
++                            except OSError:
++                                status = "failed"
++                        else:
++                            # Declared evidence file is missing
++                            status = "failed"
++
++                    if status == "unverified":
++                        t_lower = text.casefold()
++                        if "pass" in t_lower or "通过" in t_lower:
++                            status = "passed"
++                        elif "fail" in t_lower or "失败" in t_lower:
++                            status = "failed"
++                        elif "unknown" in t_lower or "未知" in t_lower:
++                            status = "unknown"
++
++                    bindings.append({
++                        "statement": text,
++                        "source": source.source(line),
++                        "evidence_ref": ref_path,
++                        "evidence_sha256": evidence_sha256,
++                        "reviewer": reviewer,
++                        "baseline_head": baseline_head,
++                        "status": status,
++                        "is_external": is_external,
++                    })
++    return bindings[:50]
++
++
++def build_handoff(
++    *,
++    project: MarkdownStateSource | None,
++    task_plan: MarkdownStateSource | None,
++    findings: MarkdownStateSource | None,
++    progress: MarkdownStateSource | None,
++    decisions_doc: MarkdownStateSource | None,
++    task_path: str | None,
++    observed_head: str | None,
++    expected_head: str,
++    coverage: list[dict[str, object]],
++    repo_root: Path,
++    issues: list[dict[str, object]],
++    selected_paths: set[str] | None = None,
++) -> dict[str, object]:
++    """Generate a bounded, verifiable handoff material conforming to specmesh.handoff.v1."""
++    project_title = project.title_statement() if project else None
++    task_title = task_plan.title_statement() if task_plan else None
++
++    if project_title and len(str(project_title["text"])) > 4096:
++        issues.append({"code": "handoff_statement_too_large", "severity": "warning", "field": "project_identity",
++                       "message": "Project identity exceeds the 4096-character output limit."})
++        project_title = None
++    if task_title and len(str(task_title["text"])) > 4096:
++        issues.append({"code": "handoff_statement_too_large", "severity": "warning", "field": "task",
++                       "message": "Task identity exceeds the 4096-character output limit."})
++        task_title = None
++
++    candidates = [] if task_path or project is None else project.linked_task_candidates()
++    if len(candidates) > 50:
++        issues.append({"code": "task_candidate_limit", "severity": "warning", "field": "task",
++                       "message": f"{len(candidates)} linked task candidates exceed the 50-item output limit."})
++        candidates = candidates[:50]
++
++    project_identity = {
++        "state": "known" if project_title else "unknown",
++        "value": project_title["text"] if project_title else None,
++        "sources": [project_title["source"]] if project_title else [],
++    }
++    if task_path:
++        task_state = "selected" if task_title else "unknown"
++    else:
++        task_state = "ambiguous" if len(candidates) > 1 else "unknown"
++
++    task = {
++        "state": task_state,
++        "path": task_path,
++        "value": task_title["text"] if task_title else None,
++        "candidates": candidates,
++        "sources": [task_title["source"]] if task_title else [],
++    }
++
++    goals = []
++    constraints = []
++    decisions = []
++    completed = []
++    failed = []
++    unknown_items = []
++    remaining_work = []
++    next_steps = []
++    blockers = []
++    declared_status = []
++
++    if project:
++        goals += project.statements("Why", "User Intent")
++        constraints += project.statements("Constraints", "Non-goals")
++    if decisions_doc:
++        for heading in decisions_doc.sections:
++            decisions += decisions_doc.statements(heading)
++    if task_plan:
++        goals += task_plan.statements("Goal", "Context", "目标、背景与边界", "可观察行为")
++        constraints += task_plan.statements(
++            "Requirements", "Constraints", "Non-goals", "当前不做", "每张卡共同执行约束",
++            "允许写范围", "权限、预算与停止",
++        )
++        remaining_work += task_plan.statements("Remaining", "待完成")
++        blockers += task_plan.statements("Issues", "Blockers")
++        declared_status += task_plan.statements("Status", "状态与唯一下一步")
++        next_steps += task_plan.statements("Next", "Next Step")
++    if progress:
++        blockers += progress.statements("Issues", "Blockers")
++        declared_status += progress.statements("Current")
++        completed += progress.statements("Done")
++        remaining_work += progress.statements("Remaining", "待完成")
++        next_steps = progress.statements("Next", "Next Step") or next_steps
++
++    for b in blockers:
++        b_text = str(b["text"]).casefold()
++        if re.search(r"\b(fail(?:ed|ure)?|blocked|error)\b|失败|阻塞|错误", b_text):
++            failed.append(b)
++        elif re.search(r"\bunknown\b|未知", b_text):
++            unknown_items.append(b)
++
++    goals = _bounded("goals", goals, issues)
++    constraints = _bounded("constraints", constraints, issues)
++    decisions = _bounded("decisions", decisions, issues)
++    completed = _bounded("work_summary.completed", completed, issues)
++    failed = _bounded("work_summary.failed", failed, issues)
++    unknown_items = _bounded("work_summary.unknown", unknown_items, issues)
++    remaining_work = _bounded("remaining_work", remaining_work, issues)
++    next_steps = _bounded("next_step", next_steps, issues)
++
++    if len(next_steps) == 1:
++        next_step_state = "selected"
++        sole_next_step = next_steps[0]
++        next_sources = [sole_next_step["source"]]
++    elif len(next_steps) > 1:
++        next_step_state = "ambiguous"
++        sole_next_step = None
++        next_sources = [ns["source"] for ns in next_steps[:10]]
++        issues.append({"code": "next_step_ambiguous", "severity": "warning", "field": "next_step",
++                       "message": f"Multiple ({len(next_steps)}) next steps declared; unambiguous sole step required."})
++    else:
++        next_step_state = "unknown"
++        sole_next_step = None
++        next_sources = []
++        issues.append({"code": "next_step_missing", "severity": "warning", "field": "next_step",
++                       "message": "No next step declared."})
++
++    next_step_model = {
++        "state": next_step_state,
++        "statement": sole_next_step,
++        "sources": next_sources,
++    }
++
++    ev_sources = [s for s in (progress, findings, task_plan) if s is not None]
++    evidence_bindings = extract_evidence_bindings(ev_sources, repo_root)
++
++    # Scan git dirty with explicit task path and selected paths
++    sel_set = set(selected_paths or [])
++    if task_path:
++        sel_set.add(task_path)
++    dirty_summary, dirty_entries = scan_git_dirty(repo_root, observed_head, task_path, sel_set)
++    is_clean = len(dirty_entries) == 0
++
++    head_matches = observed_head == expected_head if observed_head is not None else False
++    if not head_matches:
++        issues.append({"code": "head_stale", "severity": "error", "field": "baseline",
++                       "message": f"Observed HEAD {observed_head} does not match expected HEAD {expected_head}."})
++
++    scope_fingerprint = compute_scope_fingerprint(
++        observed_head,
++        coverage,
++        dirty_entries,
++        evidence_bindings,
++    )
++
++    is_cancelled = False
++    all_status_statements = declared_status + blockers
++    for stmt in all_status_statements:
++        text = str(stmt["text"]).casefold()
++        if re.search(r"\b(cancel(?:led|ed)?)\b|已取消|取消", text):
++            is_cancelled = True
++            break
++    if is_cancelled:
++        issues.append({"code": "task_cancelled", "severity": "warning", "field": "declared_status",
++                       "message": "Task is declared cancelled; handoff is non-executable."})
++
++    current_classes = _classifications(declared_status)
++    classes = current_classes | _classifications(blockers)
++    has_status_conflict = len(current_classes) > 1 or ("done" in classes and ("failed" in classes or "unknown" in classes))
++    if has_status_conflict:
++        issues.append({"code": "declared_status_conflict", "severity": "warning", "field": "declared_status",
++                       "message": "Conflicting status declarations coexisting with failed/unknown blockers."})
++
++    has_errors = any(item["severity"] == "error" for item in issues)
++    if has_errors:
++        state = "blocked"
++        executable = False
++    elif is_cancelled:
++        state = "cancelled"
++        executable = False
++    elif not head_matches or observed_head is None:
++        state = "stale"
++        executable = False
++    elif has_status_conflict or next_step_state != "selected" or task_state != "selected":
++        state = "rejected"
++        executable = False
++    elif not goals or not constraints or len(failed) > 0:
++        state = "rejected"
++        executable = False
++    else:
++        state = "ready"
++        executable = True
++
++    handoff = {
++        "schema_version": HANDOFF_SCHEMA_VERSION,
++        "state": state,
++        "executable": executable,
++        "project": project_identity,
++        "task": task,
++        "goals": goals,
++        "constraints": constraints,
++        "decisions": decisions,
++        "work_summary": {
++            "completed": completed,
++            "failed": failed,
++            "unknown": unknown_items,
++        },
++        "remaining_work": remaining_work,
++        "next_step": next_step_model,
++        "baseline": {
++            "observed_head": observed_head,
++            "expected_head": expected_head,
++            "head_matches": head_matches,
++            "scope_fingerprint": scope_fingerprint,
++        },
++        "dirty_coverage": {
++            "is_clean": is_clean,
++            "summary": dirty_summary,
++            "entries": dirty_entries,
++        },
++        "evidence_bindings": evidence_bindings,
++        "issues": issues,
++    }
++    return validate("specmesh-handoff", handoff)
++
++
++def verify_pre_consumption(handoff: dict[str, object], repo_root: Path) -> dict[str, object]:
++    """Strictly verify handoff material and live repository conditions before consumption."""
++    issues: list[dict[str, object]] = []
++
++    def issue(code: str, severity: str, field: str, message: str) -> None:
++        issues.append({"code": code, "severity": severity, "field": field, "message": message})
++
++    # 1. Strict schema validation
++    try:
++        validate("specmesh-handoff", handoff)
++    except Exception as exc:
++        issue("invalid_handoff_schema", "error", "schema", f"Handoff failed schema validation: {exc}")
++        return {
++            "schema_version": HANDOFF_SCHEMA_VERSION,
++            "verified": False,
++            "executable": False,
++            "state": "blocked",
++            "issues": issues,
++        }
++
++    if not repo_root.is_dir():
++        issue("repository_unavailable", "error", "repo_root", "Specified repository root does not exist.")
++        return {
++            "schema_version": HANDOFF_SCHEMA_VERSION,
++            "verified": False,
++            "executable": False,
++            "state": "blocked",
++            "issues": issues,
++        }
++
++    # 2. Check payload declared state
++    if handoff.get("state") == "cancelled":
++        issue("task_cancelled", "error", "task", "Handoff task was declared cancelled; rejecting execution.")
++    if not handoff.get("executable") or handoff.get("state") != "ready":
++        issue("handoff_not_ready", "error", "handoff", f"Handoff state '{handoff.get('state')}' is not executable.")
++
++    baseline = handoff.get("baseline", {})
++    expected_head = baseline.get("observed_head")
++
++    try:
++        current_head = read_git(repo_root, "rev-parse", "HEAD").decode().strip()
++    except Exception as exc:
++        issue("git_unavailable", "error", "baseline", str(exc))
++        current_head = None
++
++    if current_head != expected_head:
++        issue("head_stale", "error", "baseline",
++              f"Current HEAD {current_head} does not match handoff baseline HEAD {expected_head}.")
++
++    # 3. Live re-observation of sources, task cancellation, and status conflict via DocumentSnapshot
++    try:
++        with DocumentSnapshot(repo_root) as snapshot:
++            for item in baseline.get("coverage", []):
++                p = str(item.get("path", ""))
++                expected_sha = item.get("sha256")
++                try:
++                    raw = snapshot.read(p, optional=True)
++                    if raw is None:
++                        issue("source_file_missing", "error", "coverage", f"Covered source document '{p}' is missing.")
++                    else:
++                        actual_sha = hashlib.sha256(raw).hexdigest()
++                        if actual_sha != expected_sha:
++                            issue("source_content_modified_at_same_head", "error", "coverage",
++                                  f"Covered source '{p}' content changed at same HEAD (expected {expected_sha}, got {actual_sha}).")
++                except Exception as exc:
++                    issue("source_read_failed", "error", "coverage", f"Failed reading covered document '{p}': {exc}")
++
++            # Re-check live task documents for cancellation
++            task_path = handoff.get("task", {}).get("path")
++            if task_path:
++                task_plan_raw = snapshot.read(f"{task_path}/task_plan.md", optional=True)
++                progress_raw = snapshot.read(f"{task_path}/progress.md", optional=True)
++                combined_text = ((task_plan_raw or b"") + b"\n" + (progress_raw or b"")).decode("utf-8", errors="replace").casefold()
++                if re.search(r"\b(cancel(?:led|ed)?)\b|已取消|取消", combined_text):
++                    issue("task_cancelled_in_worktree", "error", "task",
++                          "Task has been declared cancelled in live repository worktree.")
++
++            snapshot.verify()
++    except Exception as exc:
++        issue("snapshot_verification_failed", "error", "coverage", f"Document snapshot failed revalidation: {exc}")
++
++    # 4. Check evidence files
++    evidence_bindings = handoff.get("evidence_bindings", [])
++    for ev in evidence_bindings:
++        ref = ev.get("evidence_ref")
++        exp_ev_sha = ev.get("evidence_sha256")
++        if ref:
++            ev_file = repo_root / ref
++            if not ev_file.is_file() or ev_file.is_symlink():
++                issue("evidence_file_missing", "error", "evidence", f"Evidence file '{ref}' is missing in worktree.")
++            else:
++                try:
++                    act_ev_sha = hashlib.sha256(ev_file.read_bytes()).hexdigest()
++                    if exp_ev_sha and act_ev_sha != exp_ev_sha:
++                        issue("evidence_file_modified", "error", "evidence",
++                              f"Evidence file '{ref}' content changed at same HEAD.")
++                except OSError as exc:
++                    issue("evidence_file_unreadable", "error", "evidence", f"Cannot read evidence file '{ref}': {exc}")
++        if ev.get("status") == "failed":
++            issue("evidence_failed", "error", "evidence", f"Evidence item '{ev.get('statement')}' is marked failed.")
++
++    # 5. Check staged index content and worktree dirty entries
++    try:
++        stage_raw = read_git(repo_root, "ls-files", "--stage", "-z")
++        live_index: dict[str, tuple[str, str]] = {}
++        for row in stage_raw.split(b"\0"):
++            if not row:
++                continue
++            header, _, name = row.partition(b"\t")
++            parts = header.decode("ascii").split()
++            if len(parts) == 3:
++                live_index[name.decode("utf-8")] = (parts[0], parts[1])
++    except Exception as exc:
++        issue("index_inspection_failed", "error", "dirty_coverage", str(exc))
++        live_index = {}
++
++    dirty_coverage = handoff.get("dirty_coverage", {})
++    entries = dirty_coverage.get("entries", [])
++    for entry in entries:
++        path_str = entry["path"]
++        expected_wt_sha = entry.get("worktree_sha256")
++        expected_st_sha = entry.get("staged_sha256")
++
++        # Check staged index sha
++        if expected_st_sha is not None:
++            if path_str not in live_index:
++                issue("staged_content_missing", "error", "dirty_coverage",
++                      f"File '{path_str}' is no longer staged in index.")
++            else:
++                _, oid = live_index[path_str]
++                try:
++                    blob = read_git(repo_root, "cat-file", "blob", oid)
++                    actual_st_sha = hashlib.sha256(blob).hexdigest()
++                    if actual_st_sha != expected_st_sha:
++                        issue("staged_content_mismatch", "error", "dirty_coverage",
++                              f"Staged index blob for '{path_str}' has changed.")
++                except Exception as exc:
++                    issue("staged_blob_read_failed", "error", "dirty_coverage", str(exc))
++
++        # Check worktree content
++        target_path = repo_root / path_str
++        if not target_path.exists():
++            issue("dirty_file_missing", "error", "dirty_coverage",
++                  f"Dirty file '{path_str}' is missing in worktree; new worktree does not automatically contain dirty state.")
++        else:
++            try:
++                actual_wt_sha = hashlib.sha256(target_path.read_bytes()).hexdigest()
++                if actual_wt_sha != expected_wt_sha:
++                    issue("dirty_hash_mismatch", "error", "dirty_coverage",
++                          f"Dirty file '{path_str}' content has changed at same HEAD.")
++            except OSError as exc:
++                issue("dirty_file_unreadable", "error", "dirty_coverage", f"Failed reading '{path_str}': {exc}")
++
++    # 6. Detect dirty coverage omissions within task scope
++    task_path = handoff.get("task", {}).get("path")
++    if current_head:
++        try:
++            _, live_dirty_entries = scan_git_dirty(
++                repo_root, current_head, task_path, set(handoff.get("task", {}).get("candidates", []))
++            )
++            live_dirty_paths = {e["path"] for e in live_dirty_entries}
++            handoff_dirty_paths = {e["path"] for e in entries}
++            omissions = live_dirty_paths - handoff_dirty_paths
++            if omissions:
++                issue("dirty_coverage_omission", "error", "dirty_coverage",
++                      f"Live task dirty files {sorted(omissions)} are omitted from handoff coverage.")
++        except Exception:
++            pass
++
++    # 7. Check next step
++    next_step = handoff.get("next_step", {})
++    if next_step.get("state") != "selected":
++        issue("next_step_invalid", "error", "next_step", "Handoff does not have a unique, selected next step.")
++
++    # 8. Recompute and verify scope fingerprint
++    if current_head:
++        try:
++            recomputed_fp = compute_scope_fingerprint(
++                current_head,
++                baseline.get("coverage", []),
++                entries,
++                evidence_bindings,
++            )
++            expected_fp = baseline.get("scope_fingerprint")
++            if recomputed_fp != expected_fp:
++                issue("scope_fingerprint_mismatch", "error", "baseline",
++                      f"Scope fingerprint mismatch (expected {expected_fp}, recomputed {recomputed_fp}).")
++        except Exception as exc:
++            issue("fingerprint_recomputation_failed", "error", "baseline", str(exc))
++
++    has_errors = any(i["severity"] == "error" for i in issues)
++    return {
++        "schema_version": HANDOFF_SCHEMA_VERSION,
++        "verified": not has_errors,
++        "executable": not has_errors,
++        "state": "blocked" if has_errors else "ready",
++        "issues": issues,
++    }
++
++
++def render_handoff(handoff: dict[str, object]) -> str:
++    """Render the handoff material in human-readable Markdown with safe character escaping."""
++    lines = [
++        "# SpecMesh handoff v1",
++        f"state: {_visible(handoff['state'])}",
++        f"executable: {str(handoff['executable']).lower()}",
++    ]
++    baseline = handoff["baseline"]
++    lines += [
++        f"observed_head: {_visible(baseline['observed_head'] or 'unknown')}",
++        f"expected_head: {_visible(baseline['expected_head'])}",
++        f"head_matches: {str(baseline['head_matches']).lower()}",
++        f"scope_fingerprint: {_visible(baseline['scope_fingerprint'])}",
++    ]
++
++    project, task = handoff["project"], handoff["task"]
++    p_sources = ", ".join(_source_text(s) for s in project["sources"]) or "no source"
++    t_sources = ", ".join(_source_text(s) for s in task["sources"]) or "no source"
++    lines += [
++        f"project: {_visible(project['value'] or 'unknown')} [{_visible(project['state'])}; {p_sources}]",
++        f"task: {_visible(task['value'] or 'unknown')} [{_visible(task['state'])}; {t_sources}]",
++        f"task_path: {_visible(task['path'] or 'unknown')}",
++    ]
++
++    next_step = handoff["next_step"]
++    lines.append(f"next_step_state: {_visible(next_step['state'])}")
++    if next_step["statement"]:
++        stmt = next_step["statement"]
++        lines.append(f"sole_next_step: {_visible(stmt['text'])} ({_source_text(stmt['source'])})")
++    else:
++        lines.append("sole_next_step: none")
++
++    for key, title in (
++        ("goals", "Goals"),
++        ("constraints", "Constraints"),
++        ("decisions", "Decisions"),
++        ("remaining_work", "Remaining work"),
++    ):
++        lines.append(f"\n## {title}")
++        rows = handoff.get(key, [])
++        if not rows:
++            lines.append("- unknown")
++        for row in rows:
++            lines.append(f"- {_visible(row['text'])} (authority:{_visible(row['authority'])}; {_source_text(row['source'])})")
++
++    lines.append("\n## Work summary")
++    ws = handoff["work_summary"]
++    lines.append("### Completed")
++    if not ws["completed"]:
++        lines.append("- none")
++    for row in ws["completed"]:
++        lines.append(f"- {_visible(row['text'])} ({_source_text(row['source'])})")
++
++    lines.append("### Failed")
++    if not ws["failed"]:
++        lines.append("- none")
++    for row in ws["failed"]:
++        lines.append(f"- {_visible(row['text'])} ({_source_text(row['source'])})")
++
++    lines.append("### Unknown")
++    if not ws["unknown"]:
++        lines.append("- none")
++    for row in ws["unknown"]:
++        lines.append(f"- {_visible(row['text'])} ({_source_text(row['source'])})")
++
++    lines.append("\n## Dirty coverage")
++    dc = handoff["dirty_coverage"]
++    lines.append(f"is_clean: {str(dc['is_clean']).lower()}")
++    sm = dc["summary"]
++    lines.append(f"staged: {sm['staged_count']}, unstaged: {sm['unstaged_count']}, untracked: {sm['untracked_count']}")
++    if not dc["entries"]:
++        lines.append("- clean worktree")
++    for entry in dc["entries"]:
++        st_sha = f" staged_sha256:{_visible(entry['staged_sha256'])}" if entry.get("staged_sha256") else ""
++        lines.append(
++            f"- {_visible(entry['path'])} [{_visible(entry['kind'])}]{st_sha} sha256:{_visible(entry['worktree_sha256'])} locator:{_visible(entry['locator'])}"
++        )
++
++    lines.append("\n## Evidence bindings")
++    eb = handoff.get("evidence_bindings", [])
++    if not eb:
++        lines.append("- none")
++    for row in eb:
++        reviewer_info = f" reviewer:{_visible(row['reviewer'])}" if row.get("reviewer") else ""
++        head_info = f" baseline_head:{_visible(row['baseline_head'])}" if row.get("baseline_head") else ""
++        sha_info = f" sha256:{_visible(row['evidence_sha256'])}" if row.get("evidence_sha256") else ""
++        lines.append(
++            f"- {_visible(row['statement'])} [status:{_visible(row['status'])}; external:{str(row['is_external']).lower()}{reviewer_info}{head_info}{sha_info}]"
++        )
++
++    lines.append("\n## Issues")
++    issues = handoff.get("issues", [])
++    if not issues:
++        lines.append("- none")
++    for item in issues:
++        lines.append(
++            f"- {_visible(item['severity'])} {_visible(item['code'])} [{_visible(item['field'])}]: {_visible(item['message'])}"
++        )
++
++    return "\n".join(lines) + "\n"
+diff --git a/specmesh_port/contracts/specmesh-handoff.schema.json b/specmesh_port/contracts/specmesh-handoff.schema.json
+new file mode 100644
+index 0000000..e3c4ceb
+--- /dev/null
++++ b/specmesh_port/contracts/specmesh-handoff.schema.json
+@@ -0,0 +1,287 @@
++{
++  "$schema": "https://json-schema.org/draft/2020-12/schema",
++  "title": "SpecMeshHandoff",
++  "type": "object",
++  "additionalProperties": false,
++  "required": [
++    "schema_version",
++    "state",
++    "executable",
++    "project",
++    "task",
++    "goals",
++    "constraints",
++    "decisions",
++    "work_summary",
++    "remaining_work",
++    "next_step",
++    "baseline",
++    "dirty_coverage",
++    "evidence_bindings",
++    "issues"
++  ],
++  "properties": {
++    "schema_version": {
++      "enum": ["specmesh.handoff.v1"]
++    },
++    "state": {
++      "enum": ["ready", "rejected", "stale", "cancelled", "blocked", "unknown"]
++    },
++    "executable": {
++      "type": "boolean"
++    },
++    "project": {
++      "$ref": "#/$defs/identity"
++    },
++    "task": {
++      "$ref": "#/$defs/task"
++    },
++    "goals": {
++      "$ref": "#/$defs/statements"
++    },
++    "constraints": {
++      "$ref": "#/$defs/statements"
++    },
++    "decisions": {
++      "$ref": "#/$defs/statements"
++    },
++    "work_summary": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["completed", "failed", "unknown"],
++      "properties": {
++        "completed": {"$ref": "#/$defs/statements"},
++        "failed": {"$ref": "#/$defs/statements"},
++        "unknown": {"$ref": "#/$defs/statements"}
++      }
++    },
++    "remaining_work": {
++      "$ref": "#/$defs/statements"
++    },
++    "next_step": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["state", "statement", "sources"],
++      "properties": {
++        "state": {"enum": ["selected", "unknown", "ambiguous"]},
++        "statement": {
++          "anyOf": [
++            {"$ref": "#/$defs/statement"},
++            {"type": "null"}
++          ]
++        },
++        "sources": {
++          "type": "array",
++          "maxItems": 10,
++          "items": {"$ref": "#/$defs/source"}
++        }
++      }
++    },
++    "baseline": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["observed_head", "expected_head", "head_matches", "scope_fingerprint", "coverage"],
++      "properties": {
++        "observed_head": {
++          "anyOf": [
++            {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"},
++            {"type": "null"}
++          ]
++        },
++        "expected_head": {
++          "type": "string",
++          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
++        },
++        "head_matches": {
++          "type": "boolean"
++        },
++        "scope_fingerprint": {
++          "type": "string",
++          "pattern": "^[0-9a-f]{64}$"
++        },
++        "coverage": {
++          "type": "array",
++          "maxItems": 100,
++          "items": {"$ref": "#/$defs/coverage_item"}
++        }
++      }
++    },
++    "dirty_coverage": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["is_clean", "summary", "entries"],
++      "properties": {
++        "is_clean": {"type": "boolean"},
++        "summary": {
++          "type": "object",
++          "additionalProperties": false,
++          "required": ["staged_count", "unstaged_count", "untracked_count"],
++          "properties": {
++            "staged_count": {"type": "integer", "minimum": 0},
++            "unstaged_count": {"type": "integer", "minimum": 0},
++            "untracked_count": {"type": "integer", "minimum": 0}
++          }
++        },
++        "entries": {
++          "type": "array",
++          "maxItems": 100,
++          "items": {"$ref": "#/$defs/dirty_entry"}
++        }
++      }
++    },
++    "evidence_bindings": {
++      "type": "array",
++      "maxItems": 50,
++      "items": {"$ref": "#/$defs/evidence_binding"}
++    },
++    "issues": {
++      "type": "array",
++      "maxItems": 200,
++      "items": {"$ref": "#/$defs/issue"}
++    }
++  },
++  "$defs": {
++    "coverage_item": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["path", "sha256", "tracked", "modified"],
++      "properties": {
++        "path": {
++          "type": "string",
++          "minLength": 1,
++          "maxLength": 4096,
++          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^/\\u0000-\\u001f\\\\]+(?:/[^/\\u0000-\\u001f\\\\]+)*$"
++        },
++        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
++        "tracked": {"type": "boolean"},
++        "modified": {"type": "boolean"}
++      }
++    },
++    "source": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["path", "line_start", "line_end", "sha256"],
++      "properties": {
++        "path": {
++          "type": "string",
++          "minLength": 1,
++          "maxLength": 4096,
++          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^/\\u0000-\\u001f\\\\]+(?:/[^/\\u0000-\\u001f\\\\]+)*$"
++        },
++        "line_start": {"type": "integer", "minimum": 1},
++        "line_end": {"type": "integer", "minimum": 1},
++        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
++      }
++    },
++    "statement": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["text", "authority", "source"],
++      "properties": {
++        "text": {"type": "string", "minLength": 1, "maxLength": 4096},
++        "authority": {"enum": ["asserted_candidate"]},
++        "source": {"$ref": "#/$defs/source"}
++      }
++    },
++    "statements": {
++      "type": "array",
++      "maxItems": 200,
++      "items": {"$ref": "#/$defs/statement"}
++    },
++    "identity": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["state", "value", "sources"],
++      "properties": {
++        "state": {"enum": ["known", "unknown"]},
++        "value": {"anyOf": [{"type": "string", "maxLength": 4096}, {"type": "null"}]},
++        "sources": {"type": "array", "maxItems": 10, "items": {"$ref": "#/$defs/source"}}
++      }
++    },
++    "task": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["state", "path", "value", "candidates", "sources"],
++      "properties": {
++        "state": {"enum": ["selected", "unknown", "ambiguous"]},
++        "path": {
++          "anyOf": [
++            {
++              "type": "string",
++              "maxLength": 4096,
++              "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^/\\u0000-\\u001f\\\\]+(?:/[^/\\u0000-\\u001f\\\\]+)*$"
++            },
++            {"type": "null"}
++          ]
++        },
++        "value": {"anyOf": [{"type": "string", "maxLength": 4096}, {"type": "null"}]},
++        "candidates": {
++          "type": "array",
++          "maxItems": 50,
++          "items": {
++            "type": "string",
++            "maxLength": 4096,
++            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^/\\u0000-\\u001f\\\\]+(?:/[^/\\u0000-\\u001f\\\\]+)*$"
++          }
++        },
++        "sources": {"type": "array", "maxItems": 10, "items": {"$ref": "#/$defs/source"}}
++      }
++    },
++    "dirty_entry": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["path", "kind", "head_sha256", "staged_sha256", "worktree_sha256", "locator"],
++      "properties": {
++        "path": {
++          "type": "string",
++          "minLength": 1,
++          "maxLength": 4096,
++          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^/\\u0000-\\u001f\\\\]+(?:/[^/\\u0000-\\u001f\\\\]+)*$"
++        },
++        "kind": {"enum": ["staged", "unstaged", "staged_and_unstaged", "untracked"]},
++        "head_sha256": {"anyOf": [{"type": "string", "pattern": "^[0-9a-f]{64}$"}, {"type": "null"}]},
++        "staged_sha256": {"anyOf": [{"type": "string", "pattern": "^[0-9a-f]{64}$"}, {"type": "null"}]},
++        "staged_content": {"anyOf": [{"type": "string", "maxLength": 262144}, {"type": "null"}]},
++        "worktree_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
++        "retained_content": {"anyOf": [{"type": "string", "maxLength": 262144}, {"type": "null"}]},
++        "patch": {"anyOf": [{"type": "string", "maxLength": 262144}, {"type": "null"}]},
++        "locator": {"type": "string", "minLength": 1, "maxLength": 4096}
++      }
++    },
++    "evidence_binding": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["statement", "source", "evidence_ref", "evidence_sha256", "reviewer", "baseline_head", "status", "is_external"],
++      "properties": {
++        "statement": {"type": "string", "minLength": 1, "maxLength": 4096},
++        "source": {"$ref": "#/$defs/source"},
++        "evidence_ref": {
++          "anyOf": [
++            {
++              "type": "string",
++              "maxLength": 4096,
++              "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^/\\u0000-\\u001f\\\\]+(?:/[^/\\u0000-\\u001f\\\\]+)*$"
++            },
++            {"type": "null"}
++          ]
++        },
++        "evidence_sha256": {"anyOf": [{"type": "string", "pattern": "^[0-9a-f]{64}$"}, {"type": "null"}]},
++        "reviewer": {"anyOf": [{"type": "string", "maxLength": 4096}, {"type": "null"}]},
++        "baseline_head": {"anyOf": [{"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"}, {"type": "null"}]},
++        "status": {"enum": ["passed", "failed", "unknown", "unverified"]},
++        "is_external": {"type": "boolean"}
++      }
++    },
++    "issue": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["code", "severity", "field", "message"],
++      "properties": {
++        "code": {"type": "string", "minLength": 1, "maxLength": 200},
++        "severity": {"enum": ["info", "warning", "error"]},
++        "field": {"type": "string", "minLength": 1, "maxLength": 4096},
++        "message": {"type": "string", "minLength": 1, "maxLength": 4096}
++      }
++    }
++  }
++}
+diff --git a/tests/test_handoff.py b/tests/test_handoff.py
+new file mode 100644
+index 0000000..24481ca
+--- /dev/null
++++ b/tests/test_handoff.py
+@@ -0,0 +1,393 @@
++import json
++import hashlib
++import os
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++
++from specmesh_port.contracts_runtime import validate
++from specmesh_port.handoff import render_handoff
++from specmesh_port.service import SpecMeshService
++
++
++class HandoffTests(unittest.TestCase):
++    def setUp(self):
++        self.tmp = tempfile.TemporaryDirectory()
++        self.root = Path(self.tmp.name)
++        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
++        subprocess.run(["git", "-C", str(self.root), "config", "user.name", "Fixture"], check=True)
++        subprocess.run(["git", "-C", str(self.root), "config", "user.email", "fixture@example.invalid"], check=True)
++
++        (self.root / "AGENTS.md").write_text("# Project instructions\n", encoding="utf-8")
++        (self.root / "PROJECT.md").write_text(
++            "# SpecMesh\n\n## Why\nProvide continuity.\n\n## User Intent\nIndependent continuity.\n\n"
++            "## Constraints\n- Spec is normative.\n- No daemon.\n\n## Non-goals\nNo ops.\n",
++            encoding="utf-8",
++        )
++        (self.root / "docs").mkdir()
++        (self.root / "docs" / "DECISIONS.md").write_text(
++            "# Decisions\n\n## Keep continuity separate\nDecided to keep it separate.\n",
++            encoding="utf-8",
++        )
++        self.task = self.root / "plans" / "fixture-task"
++        self.task.mkdir(parents=True)
++        (self.task / "task_plan.md").write_text(
++            "# Fixture Task\n\n## Goal\nComplete fixture.\n\n## Status\nin progress\n\n## Next\nExecute step one.\n",
++            encoding="utf-8",
++        )
++        (self.task / "findings.md").write_text(
++            "# Findings\n\n## Evidence\n- Verified baseline check: pass\n",
++            encoding="utf-8",
++        )
++        (self.task / "progress.md").write_text(
++            "# Progress\n\n## Current\nin progress\n\n## Done\n- Initialized repository\n\n## Evidence\n- Initial commit verified\n",
++            encoding="utf-8",
++        )
++
++        subprocess.run(["git", "-C", str(self.root), "add", "."], check=True)
++        subprocess.run(["git", "-C", str(self.root), "commit", "-qm", "initial"], check=True)
++        self.head = subprocess.check_output(["git", "-C", str(self.root), "rev-parse", "HEAD"], text=True).strip()
++
++        self.service = SpecMeshService([self.root])
++        self.request = {
++            "contract_version": "specmesh.port.v1-draft",
++            "operation": "prepare_handoff",
++            "repo_root": str(self.root),
++            "expected_head": self.head,
++            "task_path": "plans/fixture-task",
++            "mode": "read_only",
++        }
++
++    def tearDown(self):
++        self.tmp.cleanup()
++
++    def test_handoff_clean_success(self):
++        result = self.service.prepare_handoff(self.request)
++        self.assertEqual(result["schema_version"], "specmesh.handoff.v1")
++        self.assertEqual(result["state"], "ready")
++        self.assertTrue(result["executable"])
++        self.assertTrue(result["dirty_coverage"]["is_clean"])
++        self.assertEqual(result["dirty_coverage"]["summary"]["staged_count"], 0)
++        self.assertEqual(result["dirty_coverage"]["summary"]["unstaged_count"], 0)
++        self.assertEqual(result["dirty_coverage"]["summary"]["untracked_count"], 0)
++        self.assertEqual(result["next_step"]["state"], "selected")
++        self.assertEqual(result["next_step"]["statement"]["text"], "Execute step one.")
++        self.assertEqual(result["baseline"]["observed_head"], self.head)
++        self.assertTrue(result["baseline"]["head_matches"])
++        self.assertRegex(result["baseline"]["scope_fingerprint"], r"^[0-9a-f]{64}$")
++
++        # Verify pre-consumption on clean repo
++        v_res = self.service.verify_handoff(result, self.root)
++        self.assertTrue(v_res["verified"])
++        self.assertTrue(v_res["executable"])
++        self.assertEqual(v_res["state"], "ready")
++
++    def test_handoff_staged_and_unstaged_preservation(self):
++        # Create a file that is staged AND unstaged
++        target = self.root / "work.txt"
++        target.write_text("v1-staged\n", encoding="utf-8")
++        subprocess.run(["git", "-C", str(self.root), "add", "work.txt"], check=True)
++        target.write_text("v2-unstaged\n", encoding="utf-8")
++
++        result = self.service.prepare_handoff(self.request)
++        self.assertEqual(result["state"], "ready")
++        self.assertTrue(result["executable"])
++        self.assertFalse(result["dirty_coverage"]["is_clean"])
++
++        entries = [e for e in result["dirty_coverage"]["entries"] if e["path"] == "work.txt"]
++        self.assertEqual(len(entries), 1)
++        entry = entries[0]
++        self.assertEqual(entry["kind"], "staged_and_unstaged")
++        self.assertEqual(entry["worktree_sha256"], hashlib.sha256(b"v2-unstaged\n").hexdigest())
++        self.assertEqual(entry["retained_content"], "v2-unstaged\n")
++        self.assertTrue(entry["locator"].startswith("file://"))
++
++        # Verify against this repo passes
++        v_res = self.service.verify_handoff(result, self.root)
++        self.assertTrue(v_res["verified"])
++        self.assertTrue(v_res["executable"])
++
++        # Verify against a separate clean repo (without dirty files) rejects execution
++        with tempfile.TemporaryDirectory() as other_tmp:
++            subprocess.run(["git", "clone", "-q", str(self.root), other_tmp], check=True)
++            other_service = SpecMeshService([other_tmp])
++            v_other = other_service.verify_handoff(result, other_tmp)
++            self.assertFalse(v_other["executable"])
++            self.assertEqual(v_other["state"], "blocked")
++            codes = [i["code"] for i in v_other["issues"]]
++            self.assertIn("dirty_file_missing", codes)
++
++    def test_handoff_relevant_untracked_file(self):
++        untracked = self.task / "notes.md"
++        untracked.write_text("# Untracked note\n", encoding="utf-8")
++
++        result = self.service.prepare_handoff(self.request)
++        self.assertEqual(result["state"], "ready")
++        self.assertTrue(result["executable"])
++
++        entries = [e for e in result["dirty_coverage"]["entries"] if e["path"] == "plans/fixture-task/notes.md"]
++        self.assertEqual(len(entries), 1)
++        self.assertEqual(entries[0]["kind"], "untracked")
++        self.assertEqual(entries[0]["retained_content"], "# Untracked note\n")
++
++        v_res = self.service.verify_handoff(result, self.root)
++        self.assertTrue(v_res["verified"])
++        self.assertTrue(v_res["executable"])
++
++        # If deleted, pre-consumption check rejects
++        untracked.unlink()
++        v_deleted = self.service.verify_handoff(result, self.root)
++        self.assertFalse(v_deleted["executable"])
++        self.assertIn("dirty_file_missing", [i["code"] for i in v_deleted["issues"]])
++
++    def test_handoff_same_head_modified_rejection(self):
++        target = self.root / "dirty.txt"
++        target.write_text("initial\n", encoding="utf-8")
++        subprocess.run(["git", "-C", str(self.root), "add", "dirty.txt"], check=True)
++
++        result = self.service.prepare_handoff(self.request)
++        self.assertEqual(result["state"], "ready")
++
++        # Now modify content at the same HEAD
++        target.write_text("modified\n", encoding="utf-8")
++        v_res = self.service.verify_handoff(result, self.root)
++        self.assertFalse(v_res["executable"])
++        self.assertIn("dirty_hash_mismatch", [i["code"] for i in v_res["issues"]])
++
++    def test_handoff_stale_head_rejection(self):
++        result = self.service.prepare_handoff(self.request)
++        self.assertEqual(result["state"], "ready")
++
++        # Create a new commit to advance HEAD
++        dummy = self.root / "dummy.txt"
++        dummy.write_text("dummy\n", encoding="utf-8")
++        subprocess.run(["git", "-C", str(self.root), "add", "dummy.txt"], check=True)
++        subprocess.run(["git", "-C", str(self.root), "commit", "-qm", "advance head"], check=True)
++
++        v_res = self.service.verify_handoff(result, self.root)
++        self.assertFalse(v_res["executable"])
++        self.assertIn("head_stale", [i["code"] for i in v_res["issues"]])
++
++    def test_handoff_cancelled_task_rejection(self):
++        (self.task / "progress.md").write_text(
++            "# Progress\n\n## Current\nTask is cancelled.\n\n## Done\n- none\n",
++            encoding="utf-8",
++        )
++        result = self.service.prepare_handoff(self.request)
++        self.assertEqual(result["state"], "cancelled")
++        self.assertFalse(result["executable"])
++
++        v_res = self.service.verify_handoff(result, self.root)
++        self.assertFalse(v_res["executable"])
++        self.assertIn("task_cancelled", [i["code"] for i in v_res["issues"]])
++
++    def test_handoff_failure_with_old_done_conflict(self):
++        (self.task / "task_plan.md").write_text(
++            "# Fixture Task\n\n## Goal\nComplete fixture.\n\n## Status\ndone\n\n## Next\nNext step.\n",
++            encoding="utf-8",
++        )
++        (self.task / "progress.md").write_text(
++            "# Progress\n\n## Current\nin progress\n\n## Issues\n- Blocker: fatal error encountered\n",
++            encoding="utf-8",
++        )
++        result = self.service.prepare_handoff(self.request)
++        self.assertEqual(result["state"], "rejected")
++        self.assertFalse(result["executable"])
++        self.assertIn("declared_status_conflict", [i["code"] for i in result["issues"]])
++
++    def test_handoff_ambiguous_next_step(self):
++        (self.task / "task_plan.md").write_text(
++            "# Fixture Task\n\n## Goal\nComplete fixture.\n\n## Status\nin progress\n\n## Next\n- First step\n- Second step\n",
++            encoding="utf-8",
++        )
++        result = self.service.prepare_handoff(self.request)
++        self.assertEqual(result["next_step"]["state"], "ambiguous")
++        self.assertIsNone(result["next_step"]["statement"])
++        self.assertEqual(result["state"], "rejected")
++        self.assertFalse(result["executable"])
++
++    def test_handoff_evidence_binding(self):
++        ev_dir = self.task / "evidence"
++        ev_dir.mkdir()
++        ev_file = ev_dir / "acceptance.md"
++        ev_file.write_text(
++            f"# Acceptance\n\n审查者: independent reviewer /root/reviewer\nHEAD: {self.head}\nResult: accepted\n",
++            encoding="utf-8",
++        )
++        (self.task / "findings.md").write_text(
++            "# Findings\n\n## Evidence\n- Independent review completed: [acceptance](evidence/acceptance.md)\n",
++            encoding="utf-8",
++        )
++        result = self.service.prepare_handoff(self.request)
++        self.assertEqual(result["state"], "ready")
++        ebs = [e for e in result["evidence_bindings"] if e.get("evidence_ref")]
++        self.assertGreaterEqual(len(ebs), 1)
++        eb = ebs[0]
++        self.assertEqual(eb["status"], "passed")
++        self.assertFalse(eb["is_external"])
++        self.assertIn("reviewer", eb["reviewer"].lower())
++        self.assertEqual(eb["baseline_head"], self.head)
++        self.assertIsNotNone(eb["evidence_sha256"])
++
++    def test_p1_verifier_rejects_tampered_payload_and_mid_state_change(self):
++        result = self.service.prepare_handoff(self.request)
++        self.assertTrue(result["executable"])
++
++        # 1. Modifying progress.md in repo to 'Task is cancelled' at same HEAD must be detected
++        (self.task / "progress.md").write_text("# Progress\n\n## Current\nTask is cancelled.\n\n## Done\n- none\n", encoding="utf-8")
++        v_cancelled = self.service.verify_handoff(result, self.root)
++        self.assertFalse(v_cancelled["executable"])
++        self.assertEqual(v_cancelled["state"], "blocked")
++        self.assertIn("task_cancelled_in_worktree", [i["code"] for i in v_cancelled["issues"]])
++
++        # 2. Tampering payload to fake ready/executable and blank fingerprint must fail closed
++        tampered = json.loads(json.dumps(result))
++        tampered["state"] = "ready"
++        tampered["executable"] = True
++        tampered["baseline"]["scope_fingerprint"] = "0" * 64
++        v_tampered = self.service.verify_handoff(tampered, self.root)
++        self.assertFalse(v_tampered["executable"])
++        self.assertIn("scope_fingerprint_mismatch", [i["code"] for i in v_tampered["issues"]])
++
++    def test_p1_staged_blob_bound_and_index_change_rejected(self):
++        work_file = self.root / "staged_work.txt"
++        work_file.write_text("v1-staged\n", encoding="utf-8")
++        subprocess.run(["git", "-C", str(self.root), "add", "staged_work.txt"], check=True)
++        work_file.write_text("v2-worktree\n", encoding="utf-8")
++
++        result = self.service.prepare_handoff(self.request)
++        self.assertEqual(result["state"], "ready")
++        entry = [e for e in result["dirty_coverage"]["entries"] if e["path"] == "staged_work.txt"][0]
++        self.assertEqual(entry["kind"], "staged_and_unstaged")
++        self.assertEqual(entry["staged_sha256"], hashlib.sha256(b"v1-staged\n").hexdigest())
++        self.assertEqual(entry["staged_content"], "v1-staged\n")
++        self.assertEqual(entry["worktree_sha256"], hashlib.sha256(b"v2-worktree\n").hexdigest())
++
++        # Verify on this state passes
++        v_ok = self.service.verify_handoff(result, self.root)
++        self.assertTrue(v_ok["executable"])
++
++        # Change index via git add while worktree remains v2-worktree
++        work_file.write_text("v3-staged\n", encoding="utf-8")
++        subprocess.run(["git", "-C", str(self.root), "add", "staged_work.txt"], check=True)
++        work_file.write_text("v2-worktree\n", encoding="utf-8")
++
++        v_idx = self.service.verify_handoff(result, self.root)
++        self.assertFalse(v_idx["executable"])
++        self.assertIn("staged_content_mismatch", [i["code"] for i in v_idx["issues"]])
++
++    def test_p1_unrelated_untracked_and_array_limit(self):
++        # 1. Unrelated untracked file at root must NOT be included in task handoff
++        token_file = self.root / "private-token.txt"
++        token_file.write_text("super-secret-token\n", encoding="utf-8")
++
++        result = self.service.prepare_handoff(self.request)
++        paths = [e["path"] for e in result["dirty_coverage"]["entries"]]
++        self.assertNotIn("private-token.txt", paths)
++
++        # 2. 101 untracked files in root must not cause schema ValidationError
++        for i in range(101):
++            (self.root / f"extra_{i}.txt").write_text(f"extra {i}\n", encoding="utf-8")
++        result2 = self.service.prepare_handoff(self.request)
++        self.assertEqual(result2["schema_version"], "specmesh.handoff.v1")
++        self.assertLessEqual(len(result2["dirty_coverage"]["entries"]), 100)
++
++    def test_p1_evidence_security_and_deletion_rejected(self):
++        # 1. Path traversal and absolute link to /tmp must not be read
++        (self.task / "findings.md").write_text(
++            "# Findings\n\n## Evidence\n- Leak attempt: [leak](/tmp/leak.txt)\n- Traversal: [bad](../../../etc/passwd)\n",
++            encoding="utf-8",
++        )
++        result = self.service.prepare_handoff(self.request)
++        ebs = [e for e in result["evidence_bindings"] if e.get("evidence_ref")]
++        self.assertEqual(len(ebs), 0)
++
++        # 2. Deleting an existing valid evidence file causes verification rejection
++        ev_dir = self.task / "evidence"
++        ev_dir.mkdir()
++        ev_file = ev_dir / "valid_acceptance.md"
++        ev_file.write_text(f"# Acceptance\nHEAD: {self.head}\nResult: accepted\n", encoding="utf-8")
++        (self.task / "findings.md").write_text(
++            "# Findings\n\n## Evidence\n- Valid review: [acceptance](evidence/valid_acceptance.md)\n",
++            encoding="utf-8",
++        )
++        h_with_ev = self.service.prepare_handoff(self.request)
++        self.assertEqual(h_with_ev["state"], "ready")
++
++        # Now delete the evidence file
++        ev_file.unlink()
++        v_del = self.service.verify_handoff(h_with_ev, self.root)
++        self.assertFalse(v_del["executable"])
++        self.assertIn("evidence_file_missing", [i["code"] for i in v_del["issues"]])
++
++    def test_handoff_text_rendering_escapes_controls(self):
++        result = self.service.prepare_handoff(self.request)
++        text = render_handoff(result)
++        self.assertIn("# SpecMesh handoff v1", text)
++        self.assertIn("state: ready", text)
++        self.assertIn("executable: true", text)
++        self.assertIn("sole_next_step: Execute step one.", text)
++        self.assertNotIn("\x00", text)
++        self.assertNotIn("\x1b", text)
++
++    def test_cli_handoff_and_verify(self):
++        # 1. CLI --handoff json
++        p_json = subprocess.run(
++            ["python3", "-B", "-m", "specmesh_port", "--allowed-root", str(self.root), "--handoff", "json"],
++            input=json.dumps(self.request),
++            text=True,
++            capture_output=True,
++        )
++        self.assertEqual(p_json.returncode, 0, p_json.stderr)
++        data = json.loads(p_json.stdout)
++        self.assertEqual(data["state"], "ready")
++        self.assertTrue(data["executable"])
++
++        # 2. CLI --handoff text
++        p_text = subprocess.run(
++            ["python3", "-B", "-m", "specmesh_port", "--allowed-root", str(self.root), "--handoff", "text"],
++            input=json.dumps(self.request),
++            text=True,
++            capture_output=True,
++        )
++        self.assertEqual(p_text.returncode, 0, p_text.stderr)
++        self.assertIn("# SpecMesh handoff v1", p_text.stdout)
++
++        # 3. CLI --verify-handoff with file
++        h_file = self.root / "handoff.json"
++        h_file.write_text(json.dumps(data), encoding="utf-8")
++        p_verify = subprocess.run(
++            ["python3", "-B", "-m", "specmesh_port", "--allowed-root", str(self.root), "--verify-handoff", str(h_file)],
++            text=True,
++            capture_output=True,
++        )
++        self.assertEqual(p_verify.returncode, 0, p_verify.stderr)
++        v_data = json.loads(p_verify.stdout)
++        self.assertTrue(v_data["verified"])
++        self.assertTrue(v_data["executable"])
++
++        # 4. CLI --verify-handoff with stdin (-)
++        p_verify_stdin = subprocess.run(
++            ["python3", "-B", "-m", "specmesh_port", "--allowed-root", str(self.root), "--verify-handoff", "-"],
++            input=json.dumps(data),
++            text=True,
++            capture_output=True,
++        )
++        self.assertEqual(p_verify_stdin.returncode, 0, p_verify_stdin.stderr)
++
++        # 5. Legacy CLI compatibility: request with operation 'prepare_handoff' without --handoff
++        p_legacy = subprocess.run(
++            ["python3", "-B", "-m", "specmesh_port", "--allowed-root", str(self.root)],
++            input=json.dumps(self.request),
++            text=True,
++            capture_output=True,
++        )
++        self.assertEqual(p_legacy.returncode, 0, p_legacy.stderr)
++        leg_data = json.loads(p_legacy.stdout)
++        self.assertEqual(leg_data["contract_version"], "specmesh.port.v1-draft")
++        self.assertEqual(leg_data["status"], "pass")
++
++
++if __name__ == "__main__":
++    unittest.main()

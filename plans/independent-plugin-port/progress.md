@@ -1,3 +1,7 @@
+> 历史 snapshot：以下保留 2026-09-12 的实现/发布/canary 记录，包含后来已由审计纠正的待办文字。2026-09-14 起的当前状态、唯一下一张卡与旧出口映射见 [bounded-delivery/progress.md](../bounded-delivery/progress.md)；本文件不触发另一条执行线。
+
+> 2026-09-15：CM 接轨从 SpecMesh 必做范围退出，非完成；下文 CM 后续待办不再触发执行。当前独立验收与发行只以 bounded-delivery 为准。
+
 # Current
 
 2026-09-12: optional artifact requirement candidate transport implemented in the

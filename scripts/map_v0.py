@@ -666,15 +666,27 @@ def render_view(graph: dict[str, object], budget: int, query: str | None = None)
     section = _area_section(resolution, query_terms, budget // 3)
     section_tokens = len(tokenize(section)) if section else 0
     nodes = sorted(graph["nodes"], key=lambda node: (-scores.get(node["id"], 0.0), node["id"]))
+    by_id = {node["id"]: node for node in nodes}
+    configurations: dict[str, set[str]] = defaultdict(set)
+    if query:
+        # Keep a selected entry's asserted configuration in the same budgeted
+        # bundle; symbol density must not orphan this explicit navigation edge.
+        for edge in graph["edges"]:
+            if (edge["relation"] == "configured_by" and edge["provenance"] == "asserted"
+                    and (edge.get("scope") is None or edge["scope"] in injectable)):
+                configurations[edge["from"]].add(edge["to"])
     selected: set[str] = set()
     for node in nodes:
-        if node["id"] in gated_nodes:
+        if node["id"] in gated_nodes or node["id"] in selected:
             continue
-        line = f"- {node['id']} [{node['kind']}; {node['authority']}]\n"
+        bundle = [node] + [by_id[target] for target in sorted(configurations.get(node["id"], ()))
+                           if target in by_id and target != node["id"]
+                           and target not in selected and target not in gated_nodes]
+        line = "".join(f"- {item['id']} [{item['kind']}; {item['authority']}]\n" for item in bundle)
         if len(tokenize(output + line)) > budget - section_tokens:
             continue
         output += line
-        selected.add(node["id"])
+        selected.update(item["id"] for item in bundle)
     output += section
     for edge in graph["edges"]:
         scope = edge.get("scope")
